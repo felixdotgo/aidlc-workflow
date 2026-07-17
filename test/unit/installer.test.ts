@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
-import { applyPlan, doctor, planInit } from "../../src/installer.js";
+import { applyPlan, doctor, planInit, planUninstall } from "../../src/installer.js";
 import type { InitOptions } from "../../src/model.js";
 
 const makeRoot = () => mkdtempSync(join(tmpdir(), "aidlc-workflow-"));
@@ -108,6 +108,54 @@ test("CLI previews by default and writes only with --yes", () => {
     const installed = execFileSync(process.execPath, [cli, "init", root, "--agent", "kiro", "--yes"], { encoding: "utf8" });
     assert.match(installed, /Installed local AI-DLC workflow assets/);
     assert.match(readFileSync(join(root, ".kiro/steering/aidlc.md"), "utf8"), /AI-DLC for Kiro/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("CLI auto-selects exactly one detected agent", () => {
+  const root = makeRoot();
+  try {
+    mkdirSync(join(root, ".kiro"), { recursive: true });
+    const cli = resolve("dist/src/cli.js");
+    const output = execFileSync(process.execPath, [cli, "init", root, "--yes"], { encoding: "utf8" });
+    assert.match(output, /Auto-selected detected agent: kiro/);
+    assert.match(readFileSync(join(root, ".kiro/steering/aidlc.md"), "utf8"), /AI-DLC for Kiro/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("uninstall removes verified assets but preserves the task board", () => {
+  const root = makeRoot();
+  try {
+    applyPlan(root, planInit(baseOptions(root)));
+    const board = join(root, ".agents/state/BOARD.md");
+    const cursorRule = join(root, ".cursor/rules/aidlc.mdc");
+    const removal = planUninstall(root);
+    assert.equal(removal.find((item) => item.path === ".agents/state/BOARD.md")?.action, "skip");
+    assert.equal(removal.find((item) => item.path === ".cursor/rules/aidlc.mdc")?.action, "delete");
+    applyPlan(root, removal);
+    assert.ok(existsSync(board));
+    assert.equal(existsSync(cursorRule), false);
+    assert.equal(existsSync(join(root, ".agents/aidlc/manifest.json")), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("uninstall preserves a modified managed adapter file", () => {
+  const root = makeRoot();
+  try {
+    applyPlan(root, planInit(baseOptions(root)));
+    const cursorRule = join(root, ".cursor/rules/aidlc.mdc");
+    writeFileSync(cursorRule, `${readFileSync(cursorRule, "utf8")}# Local addition\n`);
+    const removal = planUninstall(root);
+    assert.equal(removal.find((item) => item.path === ".cursor/rules/aidlc.mdc")?.action, "skip");
+    assert.equal(removal.find((item) => item.path === ".agents/aidlc/manifest.json")?.action, "skip");
+    applyPlan(root, removal);
+    assert.match(readFileSync(cursorRule, "utf8"), /Local addition/);
+    assert.ok(existsSync(join(root, ".agents/aidlc/manifest.json")));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -6,13 +6,13 @@ It does not download, package, copy, or check assets from AWS or any other remot
 
 ## Install
 
-Preview first (the default):
+Run setup without `--agent` to auto-select one detected agent. If zero or several agents are detected in an interactive terminal, the CLI shows a numbered list for selection:
 
 ```sh
-npx @felixdotgo/aidlc-workflow init . --agent claude,codex,cursor
+npx @felixdotgo/aidlc-workflow init .
 ```
 
-Apply the displayed plan:
+The CLI always labels the file list as a preview and asks for confirmation before changing files. Review any create, update, or conflict first. In a non-interactive environment it stays in preview mode unless `--yes` is explicit:
 
 ```sh
 npx @felixdotgo/aidlc-workflow init . --agent claude,codex,cursor --yes
@@ -26,11 +26,19 @@ npx @felixdotgo/aidlc-workflow init . --all --yes
 
 `--dry-run` always prevents writes. Existing unmanaged files are conflicts; review the plan and use `--force --yes` only when replacing one is intentional.
 
+Remove only assets that the package can verify it owns:
+
+```sh
+npx @felixdotgo/aidlc-workflow uninstall .
+```
+
+`uninstall` previews every removal and asks for confirmation. It preserves `.agents/state/BOARD.md`, any unmanaged files, and managed files or prompt blocks that were modified after installation. Use `--yes` only for an intentional non-interactive removal.
+
 ## Commands
 
 ```text
-aidlc init [path] --agent <name[,name]> [--yes] [--dry-run] [--force]
-aidlc init [path] --all [--yes] [--dry-run] [--force]
+aidlc init [path] [--agent <name[,name]> | --all] [--yes] [--dry-run] [--force]
+aidlc uninstall [path] [--yes] [--dry-run]
 aidlc status [path]
 aidlc doctor [path]
 ```
@@ -48,7 +56,7 @@ The workflow core is installed verbatim from the package's local assets:
 
 Selecting `claude` appends a marked AI-DLC block to `CLAUDE.md` and creates `.claude/skills/aidlc/SKILL.md`. Selecting `codex` appends the same kind of marked block to `AGENTS.md`. The installer preserves all existing content and only replaces its own marked block on later runs.
 
-`status` lists workflow presence and detected agent directories. `doctor` validates the local-only manifest. Re-running `init` updates only files marked as owned by this package; v1 does not provide a destructive remove command, so removal is a deliberate manual deletion of `.agents/` workflow files and the listed owned adapter files.
+`status` lists workflow presence and detected agent directories. `doctor` validates the local-only manifest. Re-running `init` updates only files marked as owned by this package.
 
 ## Supported adapters
 

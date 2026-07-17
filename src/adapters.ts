@@ -54,4 +54,6 @@ export const adapters: readonly Adapter[] = [
   }
 ];
 
+export const installableAdapters = (): readonly Adapter[] => adapters.filter((adapter) => adapter.id !== "generic");
+
 export const findAdapter = (id: AgentId): Adapter | undefined => adapters.find((adapter) => adapter.id === id);

@@ -15,7 +15,7 @@ export interface Adapter {
 }
 
 export interface PlannedWrite extends FileSpec {
-  action: "create" | "update" | "skip" | "conflict";
+  action: "create" | "update" | "delete" | "skip" | "conflict";
   reason: string;
 }
 
