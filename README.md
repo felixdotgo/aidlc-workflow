@@ -9,19 +9,19 @@ It does not download, package, copy, or check assets from AWS or any other remot
 Preview first (the default):
 
 ```sh
-npx aidlc-workflow init . --agent claude,codex,cursor
+npx @felixdotgo/aidlc-workflow init . --agent claude,codex,cursor
 ```
 
 Apply the displayed plan:
 
 ```sh
-npx aidlc-workflow init . --agent claude,codex,cursor --yes
+npx @felixdotgo/aidlc-workflow init . --agent claude,codex,cursor --yes
 ```
 
 Use every officially supported adapter deliberately:
 
 ```sh
-npx aidlc-workflow init . --all --yes
+npx @felixdotgo/aidlc-workflow init . --all --yes
 ```
 
 `--dry-run` always prevents writes. Existing unmanaged files are conflicts; review the plan and use `--force --yes` only when replacing one is intentional.
