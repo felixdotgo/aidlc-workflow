@@ -1,7 +1,25 @@
 {
   "name": "@felixdotgo/aidlc-workflow",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Install a local, agent-adapted AI-DLC workflow into a project.",
+  "keywords": [
+    "ai-dlc",
+    "ai-agent",
+    "workflow",
+    "claude-code",
+    "codex",
+    "cursor",
+    "developer-tools"
+  ],
+  "homepage": "https://github.com/felixdotgo/aidlc-workflow#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/felixdotgo/aidlc-workflow.git"
+  },
+  "bugs": {
+    "url": "https://github.com/felixdotgo/aidlc-workflow/issues"
+  },
+  "author": "felixdotgo <nguyenthanhdat.js@gmail.com>",
   "license": "MIT",
   "type": "module",
   "bin": {
