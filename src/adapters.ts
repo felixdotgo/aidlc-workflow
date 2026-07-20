@@ -11,9 +11,9 @@ const adapterFile = (owner: string, path: string, body: string): FileSpec => ({
 const instruction = (agent: string) => [
   `# AI-DLC for ${agent}`,
   "",
-  "Read `.agents/aidlc/orchestrator.md` and canonical `.agents/state/aidlc-state.json` before non-trivial work. Prefer a phase packet produced by `aidlc context` over loading every workflow document. Use phase skills under `.agents/skills/`; respect more-specific project rules.",
+  "Read `.agents/aidlc/orchestrator.md` and the sole lifecycle state `.agents/state/aidlc-state.json` before non-trivial work. Prefer a phase packet produced by `node .agents/aidlc/scripts/context.mjs <task-id> --phase <phase>` over loading every workflow document. Use phase skills under `.agents/skills/`; respect more-specific project rules.",
   "",
-  "Workflow upgrades are human-only operations. Never query npm for a newer version and never run `npm`, `npx`, or `aidlc upgrade`, including dry-runs. You may explain the documented command and review output supplied by the user.",
+  "Workflow upgrades are human-only operations. Never query npm for a newer version and never run `npm`, `npx`, or a package upgrade command, including dry-runs. You may explain the documented command and review output supplied by the user.",
   ""
 ].join("\n");
 

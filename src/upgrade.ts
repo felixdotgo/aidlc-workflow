@@ -4,7 +4,7 @@ import { adapters, findAdapter } from "./adapters.js";
 import { detectedAgents, managedContentHash, readManifest } from "./installer.js";
 import { legacyV021AdapterContents, legacyV021Hashes } from "./legacy.js";
 import type { AgentId, FileSpec, PlannedWrite, TaskState, WorkflowState } from "./model.js";
-import { emptyState, renderBoard, renderWorkplan, validateState } from "./state.js";
+import { emptyState, renderWorkplan, validateState } from "./state.js";
 import { contentHash, coreWorkflowFiles, initialProjectFiles, manifestSpec } from "./workflow.js";
 
 const safePath = (root: string, relative: string): string => {
@@ -58,11 +58,14 @@ export const migrateLegacyBoard = (root: string): { state: WorkflowState; files:
   if (!existsSync(boardPath)) return { state: emptyState(), files: [] };
   const state = emptyState();
   const files: FileSpec[] = [];
-  for (const line of readFileSync(boardPath, "utf8").split("\n")) {
+  const boardContent = readFileSync(boardPath, "utf8");
+  let migratedRows = 0;
+  for (const line of boardContent.split("\n")) {
     if (!line.startsWith("|") || /^\|[- ]+\|/.test(line) || line.includes("| id |")) continue;
     const row = cells(line);
-    if (row.length < 8) continue;
+    if (row.length < 8) throw new Error("Legacy BOARD contains a malformed task row; refusing lossy migration");
     const [id, title, phaseRaw, gateRaw, statusRaw, branch, areasRaw, doc] = row;
+    migratedRows += 1;
     const oldDoc = safePath(root, doc);
     const source = existsSync(oldDoc) ? readFileSync(oldDoc, "utf8") : "";
     const frontmatter = parseFrontmatter(source);
@@ -97,6 +100,7 @@ export const migrateLegacyBoard = (root: string): { state: WorkflowState; files:
       updatedAt: now
     };
   }
+  if (!migratedRows && !boardContent.includes("_No tasks in flight._")) throw new Error("Legacy BOARD contains no recognizable task rows; refusing lossy migration");
   for (const task of Object.values(state.tasks)) files.push({ path: task.artifacts.workplan!, owner: "aidlc-state", ownershipClass: "state", content: renderWorkplan(task) });
   validateState(state);
   return { state, files };
@@ -146,8 +150,13 @@ export const planUpgrade = (root: string): PlannedWrite[] => {
     const migration = migrateLegacyBoard(project);
     plan.push({ path: ".agents/state/aidlc-state.json", owner: "aidlc-state", ownershipClass: "state", content: `${JSON.stringify(migration.state, null, 2)}\n`, action: "migrate", reason: "migrate legacy BOARD to canonical JSON state" });
     for (const file of migration.files) plan.push({ ...file, action: "migrate", reason: "preserve legacy task prose in stable task directory" });
-    const board = plan.find((item) => item.path === ".agents/state/BOARD.md");
-    if (board) Object.assign(board, { content: renderBoard(migration.state), action: "migrate", reason: "render BOARD from migrated canonical state" });
+  }
+  const boardPath = safePath(project, ".agents/state/BOARD.md");
+  if (existsSync(boardPath)) {
+    const stateItem = plan.find((item) => item.path === ".agents/state/aidlc-state.json");
+    if (!stateItem) throw new Error("Canonical state must be present before removing legacy BOARD");
+    validateState(JSON.parse(stateItem.content));
+    plan.push({ path: ".agents/state/BOARD.md", owner: "aidlc-state", ownershipClass: "state", content: "", action: "delete", reason: "remove duplicate lifecycle-state projection after canonical JSON validation" });
   }
   const manifest = manifestSpec(managed, selected);
   plan.push({ ...manifest, action: "update", reason: legacy ? "migrate manifest to schema v2" : "update manifest inventory" });

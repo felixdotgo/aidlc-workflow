@@ -1,6 +1,6 @@
 {
-  "packageVersion": "1.0.2",
-  "createdAt": "2026-07-20T10:55:51.542Z",
+  "packageVersion": "2.0.0",
+  "createdAt": "2026-07-20T18:02:52.064Z",
   "reports": [
     {
       "runner": "local-economy-fixture",

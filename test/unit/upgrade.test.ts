@@ -26,6 +26,20 @@ test("current installation upgrades without touching project config or state", (
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test("current canonical JSON installation removes a leftover BOARD projection", () => {
+  const root = makeRoot();
+  try {
+    applyPlan(root, planInit(options(root)));
+    const board = join(root, ".agents/state/BOARD.md");
+    writeFileSync(board, "# AI-DLC BOARD\n\n_No tasks in flight._\n");
+    const plan = planUpgrade(root);
+    assert.equal(plan.find((item) => item.path === ".agents/state/BOARD.md")?.action, "delete");
+    applyUpgrade(root, plan);
+    assert.equal(existsSync(board), false);
+    assert.deepEqual(JSON.parse(readFileSync(join(root, ".agents/state/aidlc-state.json"), "utf8")), { schemaVersion: 1, tasks: {} });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test("modified managed core creates a conflict before any upgrade write", () => {
   const root = makeRoot();
   try {
@@ -103,5 +117,24 @@ test("recognized v0.2.1 core and adapter migrate end-to-end without conflicts", 
     assert.equal(readManifest(root)?.schemaVersion, 2);
     assert.match(doctor(root, true), /^OK:/);
     assert.ok(JSON.parse(readFileSync(join(root, ".agents/state/aidlc-state.json"), "utf8")).tasks["2026-0101-legacy"]);
+    assert.equal(existsSync(join(root, ".agents/state/BOARD.md")), false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("legacy BOARD migration refuses an unrecognized projection", () => {
+  const root = makeRoot();
+  try {
+    mkdirSync(join(root, ".agents/state"), { recursive: true });
+    writeFileSync(join(root, ".agents/state/BOARD.md"), "custom state that cannot be migrated\n");
+    assert.throws(() => migrateLegacyBoard(root), /refusing lossy migration/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("legacy BOARD migration refuses a malformed task row", () => {
+  const root = makeRoot();
+  try {
+    mkdirSync(join(root, ".agents/state"), { recursive: true });
+    writeFileSync(join(root, ".agents/state/BOARD.md"), "# AI-DLC BOARD\n\n| broken | task | row |\n");
+    assert.throws(() => migrateLegacyBoard(root), /malformed task row/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

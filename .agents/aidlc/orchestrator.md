@@ -1,14 +1,14 @@
 # AI-DLC v1 Orchestrator
 
-This file is the compact kernel contract. Project customization lives under `.aidlc/`; canonical lifecycle state lives in `.agents/state/aidlc-state.json`; Markdown boards and workplans are review views.
+This file is the compact kernel contract. Project customization lives under `.aidlc/`; the only persisted lifecycle state is `.agents/state/aidlc-state.json`; task prose and workplans are review artifacts.
 
 ## Turn routing
 
-1. Read canonical state or run `aidlc task show`.
+1. Read canonical state or run `node .agents/aidlc/scripts/state.mjs task show`.
 2. Classify the request as `NEW`, `RESUME`, `SWITCH`, or `OFF-WORKFLOW`.
-3. For a task, request only its current phase packet with `aidlc context <task-id> --phase <phase>`. Do not load every workflow file.
-4. Use `aidlc task transition`, `aidlc decision set`, and `aidlc evidence add` instead of hand-editing lifecycle metadata.
-5. Render human views with `aidlc render`; never treat a generated `BOARD.md` or workplan as canonical state.
+3. For a task, request only its current phase packet with `node .agents/aidlc/scripts/context.mjs <task-id> --phase <phase>`. Do not load every workflow file.
+4. Use `node .agents/aidlc/scripts/state.mjs` for task transitions, decisions, items, and evidence instead of hand-editing lifecycle metadata.
+5. Use `node .agents/aidlc/scripts/render.mjs` for task review artifacts. Never persist a second lifecycle-state projection such as `BOARD.md`.
 
 Read-only questions remain off-workflow and do not create state. Multiple tasks may exist, but a session builds one task at a time.
 
@@ -18,7 +18,7 @@ Read-only questions remain off-workflow and do not create state. Multiple tasks 
 - `G1_review`: the user resolves every design decision and approves the plan.
 - `G2_codereview`: verification and adversarial review have run; the user reviews the code.
 
-Before presenting a gate, run `aidlc gate check <task-id> --gate <gate>`. Structural errors must be fixed. Semantic fidelity remains an LLM/human responsibility. Never mark work complete without executable evidence.
+Before presenting a gate, run `node .agents/aidlc/scripts/gate-check.mjs <task-id> --gate <gate>`. Structural errors must be fixed. Semantic fidelity remains an LLM/human responsibility. Never mark work complete without executable evidence.
 
 Transitions are enforced by the state machine. A gate may not be skipped, and unresolved decisions block build. G2 always requires human approval.
 
@@ -51,7 +51,7 @@ Configured commands use executable + argument arrays. Never turn configuration i
 Workflow upgrades are initiated and applied only by a human through documented `npm` or `npx` commands.
 
 - Never query npm or another registry for newer workflow versions.
-- Never run `npm`, `npx`, or `aidlc upgrade`, including `--dry-run`.
+- Never run `npm`, `npx`, or a package upgrade command, including `--dry-run`.
 - Never suggest an upgrade merely because an installed version is old.
 - You may explain the command and review a dry-run report the user supplies.
 

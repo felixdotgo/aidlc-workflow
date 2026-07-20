@@ -5,7 +5,7 @@
 ## Command
 
 ```sh
-node .agents/aidlc/scripts/gate-check.mjs <task-id>
+node .agents/aidlc/scripts/gate-check.mjs <task-id> --gate <gate>
 ```
 
 The command is offline and dependency-free. Exit `0` means no structural error; exit `1` means at least one `ERROR`.

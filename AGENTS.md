@@ -4,7 +4,7 @@
 
 Deltas for tools WITHOUT Claude Code's integrations:
 
-- **No BOARD hook:** read `.agents/state/BOARD.md` at the **start of every turn** (it is the single source of truth for in-flight tasks), and keep it updated per `.agents/aidlc/conventions.md §8`.
+- **No state hook:** read `.agents/state/aidlc-state.json` at the **start of every turn** (it is the only persisted lifecycle state), and update it through `.agents/aidlc/scripts/state.mjs`.
 - **No Skill tool:** when the orchestrator routes to a phase, open `.agents/aidlc/phase-<clarify|plan|build|wrap|index>.md` and execute it exactly.
 - **No subagents / MCP (codegraph, serena):** per the orchestrator's Conflicts rule — use the closest fallback (inline research, `rg`/file reads) and say so.
 - Templates: `.agents/aidlc/templates/` · Stack rules (read on demand at build): `.agents/aidlc/rules/`.

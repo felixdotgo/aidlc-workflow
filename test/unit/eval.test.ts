@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { loadEvalSuite, releaseReady, scoreScenario, type EvalReport, type RunnerResult } from "../../src/eval.js";
+import { loadEvalSuite, releaseReady, resolveRunnerArguments, scoreScenario, type EvalReport, type RunnerResult } from "../../src/eval.js";
 import { verifyReleaseEvidence } from "../../src/release.js";
 
 test("bundled economy suite contains the approved 30-scenario distribution", () => {
@@ -24,14 +24,22 @@ test("scenario scoring and local release gate enforce quality thresholds", () =>
   assert.equal(releaseReady([report("a"), report("b", false)]), false);
 });
 
+test("runner script paths resolve from the project root without escaping it", () => {
+  const root = mkdtempSync(join(tmpdir(), "aidlc-runner-root-"));
+  try {
+    assert.deepEqual(resolveRunnerArguments(root, ["./scripts/runner.mjs", "--mode", "safe"]), [join(root, "scripts/runner.mjs"), "--mode", "safe"]);
+    assert.throws(() => resolveRunnerArguments(root, ["../runner.mjs"]), /escapes the project root/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test("publish evidence accepts one pinned passing runner", () => {
   const root = mkdtempSync(join(tmpdir(), "aidlc-release-"));
   const report = (runner: string): EvalReport => ({ runner, model: "economy", version: "pinned", scenarios: 30, completionRate: 1, averageScore: 9, structuralCompliance: 1, criticalViolations: 0, medianContextChars: 12_000, contextReduction: 0.64, passedReleaseGate: true, results: [] });
   try {
     const path = join(root, "release.json");
-    writeFileSync(path, JSON.stringify({ packageVersion: "1.0.2", createdAt: new Date().toISOString(), reports: [report("a"), report("b")] }));
-    assert.equal(verifyReleaseEvidence(path, "1.0.2").reports.length, 2);
-    writeFileSync(path, JSON.stringify({ packageVersion: "1.0.2", createdAt: new Date().toISOString(), reports: [report("a")] }));
-    assert.equal(verifyReleaseEvidence(path, "1.0.2").reports.length, 1);
+    writeFileSync(path, JSON.stringify({ packageVersion: "2.0.0", createdAt: new Date().toISOString(), reports: [report("a"), report("b")] }));
+    assert.equal(verifyReleaseEvidence(path, "2.0.0").reports.length, 2);
+    writeFileSync(path, JSON.stringify({ packageVersion: "2.0.0", createdAt: new Date().toISOString(), reports: [report("a")] }));
+    assert.equal(verifyReleaseEvidence(path, "2.0.0").reports.length, 1);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

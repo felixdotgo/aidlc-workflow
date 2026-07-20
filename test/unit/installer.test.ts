@@ -10,6 +10,11 @@ import type { InitOptions } from "../../src/model.js";
 const makeRoot = () => mkdtempSync(join(tmpdir(), "aidlc-v1-"));
 const options = (root: string): InitOptions => ({ root, agents: ["cursor"], all: false, dryRun: false, yes: true, force: false });
 
+test("package exposes only the npx-oriented workflow binary name", () => {
+  const manifest = JSON.parse(readFileSync(resolve("package.json"), "utf8"));
+  assert.deepEqual(manifest.bin, { "aidlc-workflow": "dist/src/cli.js" });
+});
+
 test("installs bundled assets with manifest v2 and separate project/state ownership", () => {
   const root = makeRoot();
   try {
@@ -20,19 +25,23 @@ test("installs bundled assets with manifest v2 and separate project/state owners
     applyPlan(root, plan);
     const manifest = readManifest(root);
     assert.equal(manifest?.schemaVersion, 2);
-    assert.equal(manifest?.packageVersion, "1.0.2");
+    assert.equal(manifest?.packageVersion, "2.0.0");
     assert.equal(manifest?.remoteUpdates, false);
     assert.ok(manifest?.files[".agents/aidlc/orchestrator.md"]);
+    assert.ok(manifest?.files[".agents/aidlc/scripts/state.mjs"]);
+    assert.ok(manifest?.files[".agents/aidlc/scripts/lib/runtime.mjs"]);
     assert.equal(manifest?.files[".agents/state/BOARD.md"], undefined);
+    assert.equal(existsSync(join(root, ".agents/state/BOARD.md")), false);
     assert.match(doctor(root), /^OK:/);
-    assert.match(status(root), /installed version: 1.0.2/);
+    assert.match(status(root), /installed version: 2.0.0/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("official adapters carry the human-only upgrade boundary", () => {
   for (const adapter of adapters) for (const file of adapter.files()) {
     assert.match(file.content, /Never query npm/);
-    assert.match(file.content, /never run `npm`, `npx`, or `aidlc upgrade`/);
+    assert.match(file.content, /never run `npm`, `npx`, or a package upgrade command/);
+    assert.match(file.content, /node \.agents\/aidlc\/scripts\/context\.mjs/);
   }
 });
 

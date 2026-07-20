@@ -78,14 +78,6 @@ export const transitionTask = (state: WorkflowState, id: string, target: Phase):
   return task;
 };
 
-const escapeCell = (value: string): string => value.replaceAll("|", "\\|").replaceAll("\n", " ");
-
-export const renderBoard = (state: WorkflowState): string => {
-  const rows = Object.values(state.tasks).filter((task) => task.status !== "done").sort((a, b) => a.id.localeCompare(b.id));
-  const body = rows.length ? rows.map((task) => `| \`${escapeCell(task.id)}\` | ${escapeCell(task.title)} | ${task.phase} | ${task.gate} | ${task.status} | ${escapeCell(task.branch)} | ${task.areas.map(escapeCell).join(", ")} | ${escapeCell(task.artifacts.intent ?? "—")} |`).join("\n") : "_No tasks in flight._";
-  return `# AI-DLC BOARD\n\n> Generated from \`.agents/state/aidlc-state.json\`. Do not edit this view directly.\n\n| id | title | phase | gate | status | branch | submodules | doc |\n|----|-------|-------|------|--------|--------|------------|-----|\n${body}\n`;
-};
-
 export const renderWorkplan = (task: TaskState): string => {
   const decisions = task.decisions.length ? task.decisions.map((item) => `- [${item.status === "approved" ? "x" : " "}] ${item.id} — ${item.label}${item.resolution ? ` — ${item.resolution}` : ""}`).join("\n") : "- None";
   const tasks = task.tasks.length ? task.tasks.map((item) => `- [${item.status === "done" ? "x" : item.status === "in_progress" ? "~" : " "}] ${item.id} — ${item.label}`).join("\n") : "- None";
@@ -93,9 +85,6 @@ export const renderWorkplan = (task: TaskState): string => {
 };
 
 export const renderViews = (root: string, state = loadState(root)): void => {
-  const board = join(resolve(root), ".agents/state/BOARD.md");
-  mkdirSync(dirname(board), { recursive: true });
-  writeFileSync(board, renderBoard(state), "utf8");
   for (const task of Object.values(state.tasks)) {
     if (!task.artifacts.workplan) continue;
     const path = join(resolve(root), task.artifacts.workplan);

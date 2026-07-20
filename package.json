@@ -1,6 +1,6 @@
 {
   "name": "@felixdotgo/aidlc-workflow",
-  "version": "1.0.2",
+  "version": "2.0.0",
   "description": "Install a local, agent-adapted AI-DLC workflow into a project.",
   "keywords": [
     "ai-dlc",
@@ -23,7 +23,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "aidlc": "./dist/src/cli.js"
+    "aidlc-workflow": "dist/src/cli.js"
   },
   "files": [
     "dist/src",

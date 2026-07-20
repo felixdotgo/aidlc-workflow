@@ -2,9 +2,9 @@
 
 ## Canonical data
 
-`.agents/state/aidlc-state.json` is canonical for task phase, gate, status, decisions, execution checklist, and evidence. `BOARD.md` and workplan checkboxes are generated views. Intent and design prose remain Markdown artifacts under a stable task directory keyed by `task_id`; changing phase never moves them.
+`.agents/state/aidlc-state.json` is the only persisted lifecycle state for task phase, gate, status, decisions, execution checklist, and evidence. Human-readable state is emitted on demand with `node .agents/aidlc/scripts/state.mjs task show`; do not persist `BOARD.md` or another state projection. Intent, design, and workplan prose remain Markdown review artifacts under a stable task directory keyed by `task_id`; changing phase never moves them.
 
-Never edit a generated view to change state. Use the CLI, then run `aidlc render`.
+Never edit review artifacts to change state. Use `node .agents/aidlc/scripts/state.mjs`, then run `node .agents/aidlc/scripts/render.mjs` when a refreshed workplan is needed.
 
 ## Task lifecycle
 

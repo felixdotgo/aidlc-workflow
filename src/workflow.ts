@@ -25,8 +25,7 @@ export const coreWorkflowFiles = (): FileSpec[] => [
 
 export const initialProjectFiles = (): FileSpec[] => [
   { path: ".aidlc/config.json", owner: "aidlc-project", ownershipClass: "project", content: `${JSON.stringify(defaultConfig(), null, 2)}\n` },
-  { path: ".agents/state/aidlc-state.json", owner: "aidlc-state", ownershipClass: "state", content: `${JSON.stringify(emptyState(), null, 2)}\n` },
-  { path: ".agents/state/BOARD.md", owner: "aidlc-state", ownershipClass: "state", content: readFileSync(join(assetRoot, "state-board.md"), "utf8") }
+  { path: ".agents/state/aidlc-state.json", owner: "aidlc-state", ownershipClass: "state", content: `${JSON.stringify(emptyState(), null, 2)}\n` }
 ];
 
 export const manifestFor = (files: FileSpec[], adapters: AgentId[]): WorkflowManifest => ({

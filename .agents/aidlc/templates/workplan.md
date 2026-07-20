@@ -1,6 +1,6 @@
 # Workplan — <Title> (`<task-id>`)
 
-> Generated from `.agents/state/aidlc-state.json`. Resolve decisions and update task progress through the CLI, then run `aidlc render`.
+> Review artifact derived from `.agents/state/aidlc-state.json`. Resolve decisions and update progress with `node .agents/aidlc/scripts/state.mjs`, then run `node .agents/aidlc/scripts/render.mjs`.
 
 ## 🧩 Decisions (Gate G1 — approve before build)
 - <generated decision state>

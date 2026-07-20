@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { checkGate } from "../../src/gate.js";
 import type { TaskState, WorkflowState } from "../../src/model.js";
-import { renderBoard, renderWorkplan, transitionTask } from "../../src/state.js";
+import { renderWorkplan, transitionTask } from "../../src/state.js";
 
 const task = (): TaskState => ({
   id: "2026-0001-test", title: "Test task", type: "infra", phase: "clarify", gate: "G0_confirm", status: "active", language: "en", risk: "normal",
@@ -33,7 +33,7 @@ test("state machine enforces approvals, decisions, verification, and review", ()
   assert.equal(current.status, "done");
 });
 
-test("rendered views are deterministic and gate checks require artifacts/evidence", () => {
+test("rendered workplans are deterministic and gate checks require artifacts/evidence", () => {
   const root = mkdtempSync(join(tmpdir(), "aidlc-state-"));
   try {
     const current = task(); current.phase = "build"; current.gate = "G2_codereview"; current.decisions[0].status = "approved"; current.tasks[0].status = "done";
@@ -42,7 +42,6 @@ test("rendered views are deterministic and gate checks require artifacts/evidenc
       writeFileSync(join(root, path!), "artifact\n");
     }
     const state: WorkflowState = { schemaVersion: 1, tasks: { [current.id]: current } };
-    assert.match(renderBoard(state), /Generated from/);
     assert.match(renderWorkplan(current), /D1 — Shape/);
     assert.ok(checkGate(root, state, current.id, "G2_codereview").some((item) => item.code === "VERIFY_EVIDENCE"));
     current.evidence.push({ kind: "test", source: "test", result: "pass", recordedAt: new Date().toISOString() });

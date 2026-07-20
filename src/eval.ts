@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { EvalRunner } from "./model.js";
 
@@ -44,6 +44,19 @@ export const loadEvalSuite = (): EvalScenario[] => {
   return scenarios;
 };
 
+export const resolveRunnerArguments = (root: string, args: string[]): string[] => {
+  const projectRoot = resolve(root);
+  return args.map((arg) => {
+    if (!arg.startsWith("./") && !arg.startsWith("../")) return arg;
+    const candidate = resolve(projectRoot, arg);
+    const fromRoot = relative(projectRoot, candidate);
+    if (fromRoot === ".." || fromRoot.startsWith(`..${sep}`) || isAbsolute(fromRoot)) {
+      throw new Error(`Runner argument escapes the project root: ${arg}`);
+    }
+    return candidate;
+  });
+};
+
 const parseRunnerResult = (stdout: string, id: string): RunnerResult => {
   try {
     const result = JSON.parse(stdout) as RunnerResult;
@@ -70,11 +83,12 @@ export const scoreScenario = (scenario: EvalScenario, result: RunnerResult): { s
   return { score: correctness + fidelity + verification + integrity + efficiency, violations };
 };
 
-export const runEvaluation = (runnerId: string, runner: EvalRunner): EvalReport => {
+export const runEvaluation = (runnerId: string, runner: EvalRunner, root = process.cwd()): EvalReport => {
+  const runnerArgs = resolveRunnerArguments(root, runner.args);
   const results = loadEvalSuite().map((scenario) => {
     const workspace = mkdtempSync(join(tmpdir(), `aidlc-eval-${scenario.id}-`));
     try {
-      const execution = spawnSync(runner.command, runner.args, {
+      const execution = spawnSync(runner.command, runnerArgs, {
         input: JSON.stringify(scenario), encoding: "utf8", timeout: runner.timeoutMs ?? 120_000, cwd: workspace,
         env: { ...process.env, AIDLC_EVAL_WORKSPACE: workspace, AIDLC_EVAL_MODEL: runner.model, AIDLC_EVAL_VERSION: runner.version }, shell: false
       });

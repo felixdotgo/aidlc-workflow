@@ -3,9 +3,9 @@
 Goal: confirm intent before discovery cost.
 
 1. Read the compact repository/spec indexes if available; do not scan implementation code.
-2. Create canonical task state with `aidlc task create` and stable artifact paths.
+2. Create canonical task state with `node .agents/aidlc/scripts/state.mjs task create` and stable artifact paths.
 3. Fill the intent template: problem, affected areas, assumptions, open questions with safe defaults, and decidable in/out scope.
-4. Render views and run `aidlc gate check <task-id> --gate G0_confirm`.
+4. Set task status to `blocked_on_user`, render review artifacts, and run `node .agents/aidlc/scripts/gate-check.mjs <task-id> --gate G0_confirm`.
 5. Present the 🟢 G0 form and stop.
 6. After explicit approval, record `approval/G0_confirm/pass`, then transition to `plan`.
 

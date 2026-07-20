@@ -23,42 +23,48 @@
       "codex-luna-a": {
         "command": "node",
         "args": [
-          "/home/datnt4/Projects/aidlc-workflow/scripts/codex-eval-runner.mjs"
+          "./scripts/codex-eval-runner.mjs"
         ],
         "model": "gpt-5.6-luna",
         "version": "codex-cli-0.144.6",
         "timeoutMs": 120000
       },
-    "codex-luna-b": {
+      "codex-luna-b": {
         "command": "node",
         "args": [
-          "/home/datnt4/Projects/aidlc-workflow/scripts/codex-eval-runner.mjs"
+          "./scripts/codex-eval-runner.mjs"
         ],
         "model": "gpt-5.6-luna",
         "version": "codex-cli-0.144.6",
-      "timeoutMs": 120000
-    },
-    "local-economy-fixture": {
-      "command": "node",
-      "args": ["/home/datnt4/Projects/aidlc-workflow/scripts/deterministic-eval-runner.mjs"],
-      "model": "local-economy-fixture",
-      "version": "fixture-1.0.0",
-      "timeoutMs": 120000
-    },
-    "claude-sonnet-latest": {
-      "command": "node",
-      "args": ["/home/datnt4/Projects/aidlc-workflow/scripts/claude-eval-runner.mjs"],
-      "model": "sonnet",
-      "version": "claude-code-2.1.215",
-      "timeoutMs": 120000
-    },
-    "claude-haiku-latest": {
-      "command": "node",
-      "args": ["/home/datnt4/Projects/aidlc-workflow/scripts/claude-eval-runner.mjs"],
-      "model": "haiku",
-      "version": "claude-code-2.1.215",
-      "timeoutMs": 120000
-    }
+        "timeoutMs": 120000
+      },
+      "local-economy-fixture": {
+        "command": "node",
+        "args": [
+          "./scripts/deterministic-eval-runner.mjs"
+        ],
+        "model": "local-economy-fixture",
+        "version": "fixture-1.0.0",
+        "timeoutMs": 120000
+      },
+      "claude-sonnet-latest": {
+        "command": "node",
+        "args": [
+          "./scripts/claude-eval-runner.mjs"
+        ],
+        "model": "sonnet",
+        "version": "claude-code-2.1.215",
+        "timeoutMs": 120000
+      },
+      "claude-haiku-latest": {
+        "command": "node",
+        "args": [
+          "./scripts/claude-eval-runner.mjs"
+        ],
+        "model": "haiku",
+        "version": "claude-code-2.1.215",
+        "timeoutMs": 120000
+      }
     }
   }
 }
