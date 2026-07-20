@@ -1,0 +1,12 @@
+{
+  "title": "AI-DLC declarative profile",
+  "type": "object",
+  "required": ["schemaVersion", "id", "topology"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string" },
+    "extends": { "type": "array", "items": { "type": "string" } },
+    "topology": { "enum": ["generic", "single", "workspace", "git-submodules"] },
+    "discovery": { "type": "object" }, "specs": { "type": "object" }, "commands": { "type": "object" }, "rules": { "type": "object" }
+  }
+}

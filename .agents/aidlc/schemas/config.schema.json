@@ -1,0 +1,43 @@
+{
+  "title": "AI-DLC project configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "extends", "specs", "commands", "rules", "risk", "context", "eval"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "extends": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "specs": { "type": "object", "required": ["roots"], "properties": { "roots": { "type": "array", "items": { "type": "string" } } } },
+    "commands": { "type": "object", "additionalProperties": { "$ref": "#/$defs/command" } },
+    "rules": { "type": "object", "required": ["include"], "properties": { "include": { "type": "array", "items": { "type": "string" } } } },
+    "risk": { "type": "object", "required": ["default"], "properties": { "default": { "enum": ["low", "normal", "high", "regulated"] } } },
+    "context": { "type": "object", "required": ["maxChars"], "properties": { "maxChars": { "type": "integer", "minimum": 4000, "maximum": 128000 } } },
+    "eval": {
+      "type": "object",
+      "required": ["runners"],
+      "properties": {
+        "runners": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/runner" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "args"],
+      "properties": { "command": { "type": "string", "minLength": 1 }, "args": { "type": "array", "items": { "type": "string" } } }
+    },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "args", "model", "version"],
+      "properties": {
+        "command": { "type": "string", "minLength": 1 }, "args": { "type": "array", "items": { "type": "string" } },
+        "model": { "type": "string", "minLength": 1 }, "version": { "type": "string", "minLength": 1 },
+        "timeoutMs": { "type": "integer", "minimum": 1000, "maximum": 3600000 }
+      }
+    }
+  }
+}

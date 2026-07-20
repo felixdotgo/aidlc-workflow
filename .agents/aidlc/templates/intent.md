@@ -1,34 +1,17 @@
----
-task_id: <YYYY-MMDD-slug>
-title: <short title>
-type: feature | bug | refactor | infra
-phase: clarify
-gate: G0_confirm
-status: blocked_on_user
-language: vi | en
-submodules: [<sub-a>, <sub-b>]
-branch: "—"
-created_at: <DD-MM-YYYY HH:MM>
----
-
-<!-- Prose follows `language`; scaffold + technical tokens (paths/class/route/enum/cmd) stay English -->
-
 # <Title>
 
 ## 📋 Problem
-<2–4 sentences restating the goal in your own words>
+<Restate the goal and why it matters.>
 
 ## 🗺️ Affected areas
-- `<submodule>` — <why> — spec: <path/link from specs-index, or "none indexed">
+- `<area>` — <why> — spec: <indexed source or `none indexed`>
 
 ## 💭 Assumptions
-- <assumption you are making>
+- <assumption>
 
 ## ❓ Open questions
-1. <question> — *default:* <answer assumed if not specified otherwise>
+1. <question> — *default:* <safe default>
 
 ## 🎯 Scope
-**In:** <what this task will do>
-**🚫 Out:** <explicit exclusion>
-
-<!-- DESIGN appended by aidlc-plan after G0 is confirmed -->
+**In:** <decidable scope>
+**🚫 Out:** <explicit exclusions>

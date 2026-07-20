@@ -11,7 +11,9 @@ const adapterFile = (owner: string, path: string, body: string): FileSpec => ({
 const instruction = (agent: string) => [
   `# AI-DLC for ${agent}`,
   "",
-  "Read `.agents/aidlc/orchestrator.md` and `.agents/state/BOARD.md` before starting non-trivial work. Use phase skills under `.agents/skills/`; do not fetch remote workflow content. Respect more-specific instructions already present in this repository.",
+  "Read `.agents/aidlc/orchestrator.md` and canonical `.agents/state/aidlc-state.json` before non-trivial work. Prefer a phase packet produced by `aidlc context` over loading every workflow document. Use phase skills under `.agents/skills/`; respect more-specific project rules.",
+  "",
+  "Workflow upgrades are human-only operations. Never query npm for a newer version and never run `npm`, `npx`, or `aidlc upgrade`, including dry-runs. You may explain the documented command and review output supplied by the user.",
   ""
 ].join("\n");
 
@@ -37,7 +39,7 @@ export const adapters: readonly Adapter[] = [
   {
     id: "antigravity",
     displayName: "Google Antigravity",
-    detect: (root) => existsSync(join(root, ".agents")) || existsSync(join(root, ".agent")),
+    detect: (root) => existsSync(join(root, ".agents/rules")) || existsSync(join(root, ".agent")),
     files: () => [adapterFile("antigravity", ".agents/rules/aidlc.md", instruction("Google Antigravity"))]
   },
   {

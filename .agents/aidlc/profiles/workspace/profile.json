@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "topology/workspace",
+  "topology": "workspace",
+  "discovery": {
+    "roots": ["."],
+    "workspaceMarkers": ["package.json", "pnpm-workspace.yaml", "lerna.json"]
+  },
+  "specs": { "roots": [] },
+  "commands": {},
+  "rules": { "include": [] }
+}

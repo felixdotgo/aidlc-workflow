@@ -1,175 +1,138 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
-import { applyPlan, doctor, planInit, planUninstall } from "../../src/installer.js";
+import { adapters } from "../../src/adapters.js";
+import { applyPlan, doctor, planInit, planUninstall, readManifest, status } from "../../src/installer.js";
 import type { InitOptions } from "../../src/model.js";
 
-const makeRoot = () => mkdtempSync(join(tmpdir(), "aidlc-workflow-"));
-const baseOptions = (root: string): InitOptions => ({ root, agents: ["cursor"], all: false, dryRun: false, yes: true, force: false });
+const makeRoot = () => mkdtempSync(join(tmpdir(), "aidlc-v1-"));
+const options = (root: string): InitOptions => ({ root, agents: ["cursor"], all: false, dryRun: false, yes: true, force: false });
 
-test("plans and installs only local workflow assets", () => {
+test("installs bundled assets with manifest v2 and separate project/state ownership", () => {
   const root = makeRoot();
   try {
-    const plan = planInit(baseOptions(root));
+    const plan = planInit(options(root));
     assert.equal(plan.some((item) => item.action === "conflict"), false);
-    assert.ok(plan.some((item) => item.path === ".cursor/rules/aidlc.mdc"));
-    assert.ok(plan.every((item) => !/https?:\/\/|aws/i.test(item.content)));
+    assert.equal(plan.find((item) => item.path === ".aidlc/config.json")?.ownershipClass, "project");
+    assert.equal(plan.find((item) => item.path === ".agents/state/aidlc-state.json")?.ownershipClass, "state");
     applyPlan(root, plan);
-    assert.match(readFileSync(join(root, ".agents/aidlc/manifest.json"), "utf8"), /"remoteUpdates": false/);
-    assert.ok(plan.some((item) => item.path === ".agents/aidlc/orchestrator.md"));
-    assert.ok(plan.some((item) => item.path === ".agents/skills/aidlc-build/SKILL.md"));
-    assert.ok(plan.some((item) => item.path === ".agents/state/BOARD.md"));
-    assert.match(readFileSync(join(root, ".cursor/rules/aidlc.mdc"), "utf8"), /alwaysApply: true/);
+    const manifest = readManifest(root);
+    assert.equal(manifest?.schemaVersion, 2);
+    assert.equal(manifest?.packageVersion, "1.0.0");
+    assert.equal(manifest?.remoteUpdates, false);
+    assert.ok(manifest?.files[".agents/aidlc/orchestrator.md"]);
+    assert.equal(manifest?.files[".agents/state/BOARD.md"], undefined);
     assert.match(doctor(root), /^OK:/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("renders a tested integration file for every official adapter", () => {
-  const root = makeRoot();
-  try {
-    const plan = planInit({ ...baseOptions(root), all: true });
-    for (const path of [
-      "CLAUDE.md",
-      ".claude/skills/aidlc/SKILL.md",
-      "AGENTS.md",
-      ".cursor/rules/aidlc.mdc",
-      ".agents/rules/aidlc.md",
-      ".kiro/steering/aidlc.md"
-    ]) {
-      const file = plan.find((item) => item.path === path);
-      assert.ok(file, `missing ${path}`);
-      assert.match(file.content, /Read `.agents\/aidlc\/orchestrator.md`/);
-      assert.match(file.content, /\n# AI-DLC/);
-    }
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("rejects an adapter without a dedicated contract", () => {
-  const root = makeRoot();
-  try {
-    assert.throws(() => planInit({ ...baseOptions(root), agents: ["unknown" as "cursor"] }), /Unsupported adapter/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("package source and local workflow assets have no remote URL or runtime fetch call", () => {
-  const source = [
-    ...readdirSync(resolve("src")).filter((entry) => entry.endsWith(".ts")).map((entry) => resolve("src", entry)),
-    resolve(".agents/aidlc/orchestrator.md"),
-    resolve(".agents/aidlc/phase-build.md")
-  ]
-    .map((path) => readFileSync(path, "utf8"))
-    .join("\n");
-  assert.doesNotMatch(source, /https?:\/\//i);
-  assert.doesNotMatch(source, /\bfetch\s*\(/);
-});
-
-test("protects an unmanaged non-merge adapter file until force is explicit", () => {
-  const root = makeRoot();
-  try {
-    mkdirSync(join(root, ".cursor", "rules"), { recursive: true });
-    writeFileSync(join(root, ".cursor/rules/aidlc.mdc"), "# Existing instructions\n");
-    const plan = planInit({ ...baseOptions(root), agents: ["cursor"] });
-    assert.equal(plan.find((item) => item.path === ".cursor/rules/aidlc.mdc")?.action, "conflict");
-    const forced = planInit({ ...baseOptions(root), agents: ["cursor"], force: true });
-    assert.equal(forced.find((item) => item.path === ".cursor/rules/aidlc.mdc")?.action, "update");
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("recognizes the manifest ownership field on later updates", () => {
-  const root = makeRoot();
-  try {
-    const first = planInit(baseOptions(root));
-    applyPlan(root, first);
-    writeFileSync(join(root, ".agents/aidlc/manifest.json"), '{\n  "managedBy": "aidlc-workflow",\n  "schemaVersion": 0\n}\n');
-    assert.equal(planInit(baseOptions(root)).find((item) => item.path === ".agents/aidlc/manifest.json")?.action, "update");
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("CLI previews by default and writes only with --yes", () => {
-  const root = makeRoot();
-  try {
-    const cli = resolve("dist/src/cli.js");
-    const preview = execFileSync(process.execPath, [cli, "init", root, "--agent", "kiro"], { encoding: "utf8" });
-    assert.match(preview, /Preview only/);
-    assert.throws(() => readFileSync(join(root, ".agents/aidlc/manifest.json"), "utf8"));
-    const installed = execFileSync(process.execPath, [cli, "init", root, "--agent", "kiro", "--yes"], { encoding: "utf8" });
-    assert.match(installed, /Installed local AI-DLC workflow assets/);
-    assert.match(readFileSync(join(root, ".kiro/steering/aidlc.md"), "utf8"), /AI-DLC for Kiro/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("CLI auto-selects exactly one detected agent", () => {
-  const root = makeRoot();
-  try {
-    mkdirSync(join(root, ".kiro"), { recursive: true });
-    const cli = resolve("dist/src/cli.js");
-    const output = execFileSync(process.execPath, [cli, "init", root, "--yes"], { encoding: "utf8" });
-    assert.match(output, /Auto-selected detected agent: kiro/);
-    assert.match(readFileSync(join(root, ".kiro/steering/aidlc.md"), "utf8"), /AI-DLC for Kiro/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("uninstall removes verified assets but preserves the task board", () => {
-  const root = makeRoot();
-  try {
-    applyPlan(root, planInit(baseOptions(root)));
-    const board = join(root, ".agents/state/BOARD.md");
-    const cursorRule = join(root, ".cursor/rules/aidlc.mdc");
-    const removal = planUninstall(root);
-    assert.equal(removal.find((item) => item.path === ".agents/state/BOARD.md")?.action, "skip");
-    assert.equal(removal.find((item) => item.path === ".cursor/rules/aidlc.mdc")?.action, "delete");
-    applyPlan(root, removal);
-    assert.ok(existsSync(board));
-    assert.equal(existsSync(cursorRule), false);
-    assert.equal(existsSync(join(root, ".agents/aidlc/manifest.json")), false);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("uninstall preserves a modified managed adapter file", () => {
-  const root = makeRoot();
-  try {
-    applyPlan(root, planInit(baseOptions(root)));
-    const cursorRule = join(root, ".cursor/rules/aidlc.mdc");
-    writeFileSync(cursorRule, `${readFileSync(cursorRule, "utf8")}# Local addition\n`);
-    const removal = planUninstall(root);
-    assert.equal(removal.find((item) => item.path === ".cursor/rules/aidlc.mdc")?.action, "skip");
-    assert.equal(removal.find((item) => item.path === ".agents/aidlc/manifest.json")?.action, "skip");
-    applyPlan(root, removal);
-    assert.match(readFileSync(cursorRule, "utf8"), /Local addition/);
-    assert.ok(existsSync(join(root, ".agents/aidlc/manifest.json")));
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("merges the Claude prompt block without replacing existing instructions", () => {
-  const root = makeRoot();
-  try {
-    writeFileSync(join(root, "CLAUDE.md"), "# Team rules\n");
-    const plan = planInit({ ...baseOptions(root), agents: ["claude"] });
-    applyPlan(root, plan);
-    const content = readFileSync(join(root, "CLAUDE.md"), "utf8");
-    assert.match(content, /# Team rules/);
-    assert.match(content, /aidlc-installer:claude/);
-    assert.match(content, /\.agents\/aidlc\/orchestrator.md/);
+    assert.match(status(root), /installed version: 1.0.0/);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("official adapters carry the human-only upgrade boundary", () => {
+  for (const adapter of adapters) for (const file of adapter.files()) {
+    assert.match(file.content, /Never query npm/);
+    assert.match(file.content, /never run `npm`, `npx`, or `aidlc upgrade`/);
+  }
+});
+
+test("re-init refreshes owned assets while preserving project config and state", () => {
+  const root = makeRoot();
+  try {
+    applyPlan(root, planInit(options(root)));
+    const config = join(root, ".aidlc/config.json");
+    const state = join(root, ".agents/state/aidlc-state.json");
+    writeFileSync(config, '{"schemaVersion":1,"custom":true}\n');
+    writeFileSync(state, '{"schemaVersion":1,"tasks":{"kept":{}}}\n');
+    const plan = planInit(options(root));
+    assert.equal(plan.some((item) => item.action === "conflict"), false);
+    assert.ok(["skip", "update"].includes(plan.find((item) => item.path === ".agents/aidlc/manifest.json")?.action ?? ""));
+    assert.equal(plan.find((item) => item.path === ".aidlc/config.json")?.action, "preserve");
+    assert.equal(plan.find((item) => item.path === ".agents/state/aidlc-state.json")?.action, "preserve");
+    applyPlan(root, plan);
+    assert.match(readFileSync(config, "utf8"), /custom/);
+    assert.match(readFileSync(state, "utf8"), /kept/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("init cannot bypass the explicit human-only upgrade path", () => {
+  const root = makeRoot();
+  try {
+    applyPlan(root, planInit(options(root)));
+    const path = join(root, ".agents/aidlc/manifest.json");
+    const manifest = JSON.parse(readFileSync(path, "utf8")); manifest.packageVersion = "0.9.0";
+    writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
+    assert.throws(() => planInit(options(root)), /Only a human may upgrade/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("modified managed core conflicts while explicit initial force can replace unmanaged files", () => {
+  const root = makeRoot();
+  try {
+    applyPlan(root, planInit(options(root)));
+    const core = join(root, ".agents/aidlc/orchestrator.md");
+    writeFileSync(core, `${readFileSync(core, "utf8")}\nlocal edit\n`);
+    assert.equal(planInit(options(root)).find((item) => item.path === ".agents/aidlc/orchestrator.md")?.action, "conflict");
+
+    const other = makeRoot();
+    try {
+      mkdirSync(join(other, ".cursor/rules"), { recursive: true });
+      writeFileSync(join(other, ".cursor/rules/aidlc.mdc"), "unmanaged\n");
+      assert.equal(planInit(options(other)).find((item) => item.path === ".cursor/rules/aidlc.mdc")?.action, "conflict");
+      assert.equal(planInit({ ...options(other), force: true }).find((item) => item.path === ".cursor/rules/aidlc.mdc")?.action, "update");
+    } finally { rmSync(other, { recursive: true, force: true }); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("uninstall removes unchanged managed assets and preserves state/config", () => {
+  const root = makeRoot();
+  try {
+    applyPlan(root, planInit(options(root)));
+    const plan = planUninstall(root);
+    assert.equal(plan.some((item) => item.path.startsWith(".agents/state/")), false);
+    applyPlan(root, plan);
+    assert.equal(existsSync(join(root, ".agents/aidlc/manifest.json")), false);
+    assert.ok(existsSync(join(root, ".aidlc/config.json")));
+    assert.ok(existsSync(join(root, ".agents/state/aidlc-state.json")));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("uninstall preserves a modified managed adapter and ownership manifest", () => {
+  const root = makeRoot();
+  try {
+    applyPlan(root, planInit(options(root)));
+    const adapter = join(root, ".cursor/rules/aidlc.mdc");
+    writeFileSync(adapter, `${readFileSync(adapter, "utf8")}local edit\n`);
+    const plan = planUninstall(root);
+    assert.equal(plan.find((item) => item.path === ".cursor/rules/aidlc.mdc")?.action, "preserve");
+    assert.equal(plan.find((item) => item.path === ".agents/aidlc/manifest.json")?.action, "preserve");
+    applyPlan(root, plan);
+    assert.ok(existsSync(adapter));
+    assert.ok(existsSync(join(root, ".agents/aidlc/manifest.json")));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("package implementation contains no runtime remote fetch", () => {
+  const files = [resolve("src/installer.ts"), resolve("src/upgrade.ts"), resolve("src/workflow.ts"), resolve(".agents/aidlc/orchestrator.md")];
+  const content = files.map((file) => readFileSync(file, "utf8")).join("\n");
+  assert.doesNotMatch(content, /\bfetch\s*\(/);
+  assert.doesNotMatch(content, /npm\s+view/);
+});
+
+test("doctor strict validates project config and canonical state", () => {
+  const root = makeRoot();
+  try {
+    applyPlan(root, planInit(options(root)));
+    writeFileSync(join(root, ".aidlc/config.json"), '{"schemaVersion":99}\n');
+    assert.match(doctor(root, true), /^ERROR: local config\/state is invalid/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("bundled JSON schemas are valid JSON and avoid remote schema resolution", () => {
+  const names = ["config", "state", "profile", "manifest"];
+  for (const name of names) {
+    const content = readFileSync(resolve(`.agents/aidlc/schemas/${name}.schema.json`), "utf8");
+    assert.doesNotThrow(() => JSON.parse(content));
+    assert.doesNotMatch(content, /https?:\/\//);
+  }
 });

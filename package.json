@@ -1,6 +1,6 @@
 {
   "name": "@felixdotgo/aidlc-workflow",
-  "version": "0.2.1",
+  "version": "1.0.0",
   "description": "Install a local, agent-adapted AI-DLC workflow into a project.",
   "keywords": [
     "ai-dlc",
@@ -26,14 +26,17 @@
     "aidlc": "./dist/src/cli.js"
   },
   "files": [
-    "dist",
+    "dist/src",
+    "dist/assets",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "node scripts/build-assets.mjs && tsc -p tsconfig.json",
     "test": "npm run build && node --test dist/test/unit/*.test.js",
-    "lint": "tsc --noEmit -p tsconfig.json"
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "release:check": "node dist/src/release-check.js .aidlc/release-eval.json",
+    "prepublishOnly": "npm test && npm run release:check"
   },
   "engines": {
     "node": ">=20"
