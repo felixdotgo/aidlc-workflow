@@ -17,11 +17,12 @@ const prompt = [
   `Scenario ${scenario.id}: ${scenario.prompt}`
 ].join("\n");
 
-const execution = spawnSync("codex", ["exec", "--ephemeral", "--json", "--model", model, "--sandbox", "read-only", prompt], {
+const execution = spawnSync("codex", ["exec", "--ephemeral", "--json", "--skip-git-repo-check", "--model", model, "--sandbox", "read-only", prompt], {
   encoding: "utf8",
   timeout: Number(process.env.AIDLC_EVAL_TIMEOUT_MS || 120000),
   cwd: process.env.AIDLC_EVAL_WORKSPACE || process.cwd(),
-  env: process.env
+  env: process.env,
+  stdio: ["ignore", "pipe", "pipe"]
 });
 
 if (execution.error || execution.status !== 0) {
