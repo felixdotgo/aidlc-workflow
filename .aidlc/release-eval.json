@@ -1,0 +1,231 @@
+{
+  "packageVersion": "1.0.0",
+  "createdAt": "2026-07-20T10:55:51.542Z",
+  "reports": [
+    {
+      "runner": "local-economy-fixture",
+      "model": "local-economy-fixture",
+      "version": "fixture-1.0.0",
+      "scenarios": 30,
+      "completionRate": 1,
+      "averageScore": 10,
+      "structuralCompliance": 1,
+      "criticalViolations": 0,
+      "medianContextChars": 1000,
+      "contextReduction": 0.9705882352941176,
+      "passedReleaseGate": true,
+      "results": [
+        {
+          "id": "clarify-01",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "clarify-02",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "clarify-03",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "clarify-04",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "clarify-05",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "clarify-06",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "plan-01",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "plan-02",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "plan-03",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "plan-04",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "plan-05",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "plan-06",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "build-01",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "build-02",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "build-03",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "build-04",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "build-05",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "build-06",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "build-07",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "build-08",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "spec-01",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "spec-02",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "spec-03",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "spec-04",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "state-01",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "state-02",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "state-03",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "upgrade-01",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "upgrade-02",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        },
+        {
+          "id": "upgrade-03",
+          "score": 10,
+          "completed": true,
+          "violations": [],
+          "contextChars": 1000
+        }
+      ]
+    }
+  ]
+}
