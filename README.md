@@ -9,8 +9,8 @@ The package never checks a registry, downloads runtime workflow assets, or upgra
 Preview first; add `--yes` only when intentionally applying a new installation:
 
 ```sh
-npx @felixdotgo/aidlc-workflow@1.0.0 init . --agent codex --dry-run
-npx @felixdotgo/aidlc-workflow@1.0.0 init . --agent codex --yes
+npx @felixdotgo/aidlc-workflow@1.0.2 init . --agent codex --dry-run
+npx @felixdotgo/aidlc-workflow@1.0.2 init . --agent codex --yes
 ```
 
 Use `--all` for every official adapter. Existing unmanaged files are conflicts unless the initial install explicitly uses `--force --yes`.
@@ -21,16 +21,16 @@ Only a human may initiate or apply workflow upgrades. AI agents are instructed n
 
 ```sh
 # Human previews the exact package version
-npx @felixdotgo/aidlc-workflow@1.0.0 upgrade . --dry-run
+npx @felixdotgo/aidlc-workflow@1.0.2 upgrade . --dry-run
 
 # Human applies in an interactive terminal and types the target version
-npx @felixdotgo/aidlc-workflow@1.0.0 upgrade .
+npx @felixdotgo/aidlc-workflow@1.0.2 upgrade .
 ```
 
 For a project dependency:
 
 ```sh
-npm install --save-dev @felixdotgo/aidlc-workflow@1.0.0
+npm install --save-dev @felixdotgo/aidlc-workflow@1.0.2
 npm exec -- aidlc upgrade . --dry-run
 npm exec -- aidlc upgrade .
 ```
@@ -114,7 +114,7 @@ The bundled suite contains 30 scenarios. A runner is a configured executable + a
 
 A release runner passes only with average score ≥8/10, completion ≥85%, 100% structural compliance, zero critical violations, and median context at least 50% below the 34,000-character v0.2.1 baseline. Every scenario runs in a separate temporary workspace. Manual/local release requires one pinned economy-model runner; additional reports are optional.
 
-Before publish, save one passing report into `.aidlc/release-eval.json` with `{ "packageVersion": "1.0.0", "createdAt": "<ISO timestamp>", "reports": [...] }`. `prepublishOnly` runs tests and `release:check`; missing, stale, incomplete, or below-threshold evidence blocks publication.
+Before publish, save one passing report into `.aidlc/release-eval.json` with `{ "packageVersion": "1.0.2", "createdAt": "<ISO timestamp>", "reports": [...] }`. `prepublishOnly` runs tests and `release:check`; missing, stale, incomplete, or below-threshold evidence blocks publication.
 
 ## Supported adapters
 

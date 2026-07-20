@@ -20,12 +20,12 @@ test("installs bundled assets with manifest v2 and separate project/state owners
     applyPlan(root, plan);
     const manifest = readManifest(root);
     assert.equal(manifest?.schemaVersion, 2);
-    assert.equal(manifest?.packageVersion, "1.0.1");
+    assert.equal(manifest?.packageVersion, "1.0.2");
     assert.equal(manifest?.remoteUpdates, false);
     assert.ok(manifest?.files[".agents/aidlc/orchestrator.md"]);
     assert.equal(manifest?.files[".agents/state/BOARD.md"], undefined);
     assert.match(doctor(root), /^OK:/);
-    assert.match(status(root), /installed version: 1.0.1/);
+    assert.match(status(root), /installed version: 1.0.2/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
