@@ -44,6 +44,20 @@
       "model": "local-economy-fixture",
       "version": "fixture-1.0.0",
       "timeoutMs": 120000
+    },
+    "claude-sonnet-latest": {
+      "command": "node",
+      "args": ["/home/datnt4/Projects/aidlc-workflow/scripts/claude-eval-runner.mjs"],
+      "model": "sonnet",
+      "version": "claude-code-2.1.215",
+      "timeoutMs": 120000
+    },
+    "claude-haiku-latest": {
+      "command": "node",
+      "args": ["/home/datnt4/Projects/aidlc-workflow/scripts/claude-eval-runner.mjs"],
+      "model": "haiku",
+      "version": "claude-code-2.1.215",
+      "timeoutMs": 120000
     }
     }
   }
