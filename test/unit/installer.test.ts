@@ -20,7 +20,7 @@ test("installs bundled assets with manifest v2 and separate project/state owners
   try {
     const plan = planInit(options(root));
     assert.equal(plan.some((item) => item.action === "conflict"), false);
-    assert.equal(plan.find((item) => item.path === ".aidlc/config.json")?.ownershipClass, "project");
+    assert.equal(plan.find((item) => item.path === ".agents/config.json")?.ownershipClass, "project");
     assert.equal(plan.find((item) => item.path === ".agents/state/aidlc-state.json")?.ownershipClass, "state");
     applyPlan(root, plan);
     const manifest = readManifest(root);
@@ -51,14 +51,14 @@ test("re-init refreshes owned assets while preserving project config and state",
   const root = makeRoot();
   try {
     applyPlan(root, planInit(options(root)));
-    const config = join(root, ".aidlc/config.json");
+    const config = join(root, ".agents/config.json");
     const state = join(root, ".agents/state/aidlc-state.json");
     writeFileSync(config, '{"schemaVersion":1,"custom":true}\n');
     writeFileSync(state, '{"schemaVersion":1,"tasks":{"kept":{}}}\n');
     const plan = planInit(options(root));
     assert.equal(plan.some((item) => item.action === "conflict"), false);
     assert.ok(["skip", "update"].includes(plan.find((item) => item.path === ".agents/aidlc/manifest.json")?.action ?? ""));
-    assert.equal(plan.find((item) => item.path === ".aidlc/config.json")?.action, "preserve");
+    assert.equal(plan.find((item) => item.path === ".agents/config.json")?.action, "preserve");
     assert.equal(plan.find((item) => item.path === ".agents/state/aidlc-state.json")?.action, "preserve");
     applyPlan(root, plan);
     assert.match(readFileSync(config, "utf8"), /custom/);
@@ -88,9 +88,9 @@ test("modified managed core conflicts while explicit initial force can replace u
     const other = makeRoot();
     try {
       mkdirSync(join(other, ".cursor/rules"), { recursive: true });
-      writeFileSync(join(other, ".cursor/rules/aidlc.mdc"), "unmanaged\n");
-      assert.equal(planInit(options(other)).find((item) => item.path === ".cursor/rules/aidlc.mdc")?.action, "conflict");
-      assert.equal(planInit({ ...options(other), force: true }).find((item) => item.path === ".cursor/rules/aidlc.mdc")?.action, "update");
+      writeFileSync(join(other, ".cursor/rules/aidlc-core.mdc"), "unmanaged\n");
+      assert.equal(planInit(options(other)).find((item) => item.path === ".cursor/rules/aidlc-core.mdc")?.action, "conflict");
+      assert.equal(planInit({ ...options(other), force: true }).find((item) => item.path === ".cursor/rules/aidlc-core.mdc")?.action, "update");
     } finally { rmSync(other, { recursive: true, force: true }); }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -103,7 +103,7 @@ test("uninstall removes unchanged managed assets and preserves state/config", ()
     assert.equal(plan.some((item) => item.path.startsWith(".agents/state/")), false);
     applyPlan(root, plan);
     assert.equal(existsSync(join(root, ".agents/aidlc/manifest.json")), false);
-    assert.ok(existsSync(join(root, ".aidlc/config.json")));
+    assert.ok(existsSync(join(root, ".agents/config.json")));
     assert.ok(existsSync(join(root, ".agents/state/aidlc-state.json")));
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -112,10 +112,10 @@ test("uninstall preserves a modified managed adapter and ownership manifest", ()
   const root = makeRoot();
   try {
     applyPlan(root, planInit(options(root)));
-    const adapter = join(root, ".cursor/rules/aidlc.mdc");
+    const adapter = join(root, ".cursor/rules/aidlc-core.mdc");
     writeFileSync(adapter, `${readFileSync(adapter, "utf8")}local edit\n`);
     const plan = planUninstall(root);
-    assert.equal(plan.find((item) => item.path === ".cursor/rules/aidlc.mdc")?.action, "preserve");
+    assert.equal(plan.find((item) => item.path === ".cursor/rules/aidlc-core.mdc")?.action, "preserve");
     assert.equal(plan.find((item) => item.path === ".agents/aidlc/manifest.json")?.action, "preserve");
     applyPlan(root, plan);
     assert.ok(existsSync(adapter));
@@ -134,7 +134,7 @@ test("doctor strict validates project config and canonical state", () => {
   const root = makeRoot();
   try {
     applyPlan(root, planInit(options(root)));
-    writeFileSync(join(root, ".aidlc/config.json"), '{"schemaVersion":99}\n');
+    writeFileSync(join(root, ".agents/config.json"), '{"schemaVersion":99}\n');
     assert.match(doctor(root, true), /^ERROR: local config\/state is invalid/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -11,7 +11,7 @@ const adapterFile = (owner: string, path: string, body: string): FileSpec => ({
 const instruction = (agent: string, adapter: AgentId) => [
   `# AI-DLC for ${agent}`,
   "",
-  `Read \`.agents/aidlc/orchestrator.md\` and the sole lifecycle state \`.agents/state/aidlc-state.json\` before non-trivial work. Prefer a phase packet produced by \`node .agents/aidlc/scripts/context.mjs <task-id> --phase <phase>\`; respect more-specific project rules. For lifecycle mutations, consult \`.aidlc/config.json\` \`agentState.${adapter}\`: \`native\` may edit canonical state and task artifacts with native file tools after checking lifecycle invariants; otherwise use the bundled state scripts. \`scripted\` is the safe default. This changes lifecycle transport only: human gates and build verification remain mandatory.`,
+  `Read \`.agents/aidlc/orchestrator.md\` and the sole lifecycle state \`.agents/state/aidlc-state.json\` before non-trivial work. Prefer a phase packet produced by \`node .agents/aidlc/scripts/context.mjs <task-id> --phase <phase>\`; respect more-specific project rules. For lifecycle mutations, consult \`.agents/config.json\` \`agentState.${adapter}\`: \`native\` may edit canonical state and task artifacts with native file tools after checking lifecycle invariants; otherwise use the bundled state scripts. \`scripted\` is the safe default. This changes lifecycle transport only: human gates and build verification remain mandatory.`,
   "",
   "Workflow upgrades are human-only operations. Never query npm for a newer version and never run `npm`, `npx`, or a package upgrade command, including dry-runs. You may explain the documented command and review output supplied by the user.",
   ""
@@ -20,7 +20,7 @@ const instruction = (agent: string, adapter: AgentId) => [
 const claudeSkill = (phase: string, gate: string) => [
   "---", `name: aidlc-${phase}`, `description: AI-DLC ${phase} phase (${gate}) for Claude Code.`, "---", "",
   `# AI-DLC ${phase} (${gate})`, "", `Read \`.agents/aidlc/phase-${phase}.md\` and execute it exactly.`,
-  "Use `.aidlc/config.json` `agentState.claude`: `native` edits the canonical JSON state/artifacts with Claude file tools after checking phase transition invariants; `scripted` uses the bundled lifecycle scripts. Prefer `node .agents/aidlc/scripts/context.mjs <task-id> --phase <phase>`. Never bypass human gates or build verification.",
+  "Use `.agents/config.json` `agentState.claude`: `native` edits the canonical JSON state/artifacts with Claude file tools after checking phase transition invariants; `scripted` uses the bundled lifecycle scripts. Prefer `node .agents/aidlc/scripts/context.mjs <task-id> --phase <phase>`. Never bypass human gates or build verification.",
   "Workflow upgrades are human-only operations. Never query npm for a newer version and never run `npm`, `npx`, or a package upgrade command, including dry-runs.", ""
 ].join("\n");
 
@@ -41,19 +41,19 @@ export const adapters: readonly Adapter[] = [
     id: "cursor",
     displayName: "Cursor",
     detect: (root) => existsSync(join(root, ".cursor")) || existsSync(join(root, ".cursorrules")),
-    files: () => [adapterFile("cursor", ".cursor/rules/aidlc.mdc", `---\ndescription: AI-DLC workflow\nalwaysApply: true\n---\n\n${instruction("Cursor", "cursor")}`)]
+    files: () => [adapterFile("cursor", ".cursor/rules/aidlc-core.mdc", `---\ndescription: AI-DLC core\nalwaysApply: true\n---\n\n${instruction("Cursor", "cursor")}`), adapterFile("cursor", ".cursor/rules/aidlc-phases.mdc", `---\ndescription: Use for AI-DLC task lifecycle phases\nalwaysApply: false\n---\n\n${instruction("Cursor", "cursor")}`)]
   },
   {
     id: "antigravity",
     displayName: "Google Antigravity",
     detect: (root) => existsSync(join(root, ".agents/rules")) || existsSync(join(root, ".agent")),
-    files: () => [adapterFile("antigravity", ".agents/rules/aidlc.md", instruction("Google Antigravity", "antigravity"))]
+    files: () => [adapterFile("antigravity", ".agents/rules/aidlc-core.md", `---\nactivation: always\n---\n\n${instruction("Google Antigravity", "antigravity")}`), adapterFile("antigravity", ".agents/rules/aidlc-phases.md", `---\nactivation: model_decision\ndescription: AI-DLC task lifecycle\n---\n\n${instruction("Google Antigravity", "antigravity")}`)]
   },
   {
     id: "kiro",
     displayName: "Kiro",
     detect: (root) => existsSync(join(root, ".kiro")),
-    files: () => [adapterFile("kiro", ".kiro/steering/aidlc.md", instruction("Kiro", "kiro"))]
+    files: () => [adapterFile("kiro", ".kiro/steering/aidlc-core.md", `---\ninclusion: always\n---\n\n${instruction("Kiro", "kiro")}`), adapterFile("kiro", ".kiro/steering/aidlc-phases.md", `---\ninclusion: auto\nname: aidlc-phases\ndescription: AI-DLC task lifecycle\n---\n\n${instruction("Kiro", "kiro")}`)]
   },
   {
     id: "generic",

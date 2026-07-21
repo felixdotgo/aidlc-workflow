@@ -81,9 +81,9 @@ export const defaultConfig = (): ProjectConfig => ({
 });
 
 export const loadProjectConfig = (root: string): ProjectConfig => {
-  const path = join(resolve(root), ".aidlc/config.json");
+  const path = join(resolve(root), ".agents/config.json");
   if (!existsSync(path)) return defaultConfig();
-  const item = object(JSON.parse(readFileSync(path, "utf8")), ".aidlc/config.json");
+  const item = object(JSON.parse(readFileSync(path, "utf8")), ".agents/config.json");
   const risk = object(item.risk ?? {}, "config.risk");
   const context = object(item.context ?? {}, "config.context");
   const evalConfig = object(item.eval ?? {}, "config.eval");

@@ -19,7 +19,8 @@ test("config and profiles are dependency-free, composable, and traversal-safe", 
     writeFileSync(join(root, ".aidlc/profiles/local/profile.json"), JSON.stringify({ schemaVersion: 1, id: "local", extends: ["topology/single"], topology: "single", rules: { include: [".aidlc/rules/*.md"] } }));
     mkdirSync(join(root, ".aidlc/rules"), { recursive: true });
     writeFileSync(join(root, ".aidlc/rules/a.md"), "# A\n");
-    writeFileSync(join(root, ".aidlc/config.json"), JSON.stringify({ ...defaultConfig(), extends: ["local"], rules: { include: [".aidlc/rules/*.md"] } }));
+    mkdirSync(join(root, ".agents"), { recursive: true });
+    writeFileSync(join(root, ".agents/config.json"), JSON.stringify({ ...defaultConfig(), extends: ["local"], rules: { include: [".aidlc/rules/*.md"] } }));
     assert.deepEqual(resolveProfiles(root, loadProjectConfig(root).extends).map((item) => item.id), ["topology/single", "local"]);
     assert.equal(includedRuleFiles(root, [".aidlc/rules/*.md"]).length, 1);
     const outside = mkdtempSync(join(tmpdir(), "aidlc-outside-"));

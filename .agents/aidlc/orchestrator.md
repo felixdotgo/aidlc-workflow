@@ -7,7 +7,7 @@ This file is the compact kernel contract. Project customization lives under `.ai
 1. Read canonical state directly, or run `node .agents/aidlc/scripts/state.mjs task show` when the active adapter policy is `scripted`.
 2. Classify the request as `NEW`, `RESUME`, `SWITCH`, or `OFF-WORKFLOW`.
 3. For a task, request only its current phase packet with `node .agents/aidlc/scripts/context.mjs <task-id> --phase <phase>`. Do not load every workflow file.
-4. Use `node .agents/aidlc/scripts/state.mjs` for lifecycle mutations when the active adapter policy is `scripted`. When `.aidlc/config.json` sets `agentState.<adapter>` to `native`, update only the canonical state/artifacts with native file tools after checking the same transition invariants; never infer this mode from a model name.
+4. Use `node .agents/aidlc/scripts/state.mjs` for lifecycle mutations when the active adapter policy is `scripted`. When `.agents/config.json` sets `agentState.<adapter>` to `native`, update only the canonical state/artifacts with native file tools after checking the same transition invariants; never infer this mode from a model name.
 5. Use `node .agents/aidlc/scripts/render.mjs` for task review artifacts. Never persist a second lifecycle-state projection such as `BOARD.md`.
 
 Read-only questions remain off-workflow and do not create state. Multiple tasks may exist, but a session builds one task at a time.
@@ -42,7 +42,7 @@ Precedence is deterministic:
 kernel → built-in topology profile → local profile → project config/rules → approved task decisions
 ```
 
-Built-in profiles are `topology/generic`, `topology/single`, `topology/workspace`, and `topology/git-submodules`. Stack, delivery, issue-tracker, runtime, and domain rules belong in `.aidlc/config.json`, `.aidlc/profiles/`, or `.aidlc/rules/`, not in this kernel.
+Built-in profiles are `topology/generic`, `topology/single`, `topology/workspace`, and `topology/git-submodules`. Stack, delivery, issue-tracker, runtime, and domain rules belong in `.agents/config.json`, `.aidlc/profiles/`, or `.aidlc/rules/`, not in this kernel.
 
 Configured commands use executable + argument arrays. Never turn configuration into an unreviewed shell string.
 

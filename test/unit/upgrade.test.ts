@@ -15,14 +15,30 @@ test("current installation upgrades without touching project config or state", (
   const root = makeRoot();
   try {
     applyPlan(root, planInit(options(root)));
-    const config = join(root, ".aidlc/config.json"); const state = join(root, ".agents/state/aidlc-state.json");
+    const config = join(root, ".agents/config.json"); const state = join(root, ".agents/state/aidlc-state.json");
     writeFileSync(config, `${readFileSync(config, "utf8").trim()}\n`);
     const plan = planUpgrade(root);
     assert.equal(plan.some((item) => item.action === "conflict"), false);
-    assert.equal(plan.find((item) => item.path === ".aidlc/config.json")?.action, "preserve");
+    assert.equal(plan.find((item) => item.path === ".agents/config.json")?.action, "preserve");
     assert.equal(plan.find((item) => item.path === ".agents/state/aidlc-state.json")?.action, "preserve");
     assert.equal(plan.find((item) => item.path === ".agents/aidlc/manifest.json")?.action, "update");
     assert.ok(existsSync(state));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("upgrade migrates an existing legacy project config to .agents", () => {
+  const root = makeRoot();
+  try {
+    applyPlan(root, planInit(options(root)));
+    rmSync(join(root, ".agents/config.json"));
+    mkdirSync(join(root, ".aidlc"), { recursive: true });
+    writeFileSync(join(root, ".aidlc/config.json"), '{"schemaVersion":1,"legacy":true}\n');
+    const plan = planUpgrade(root);
+    assert.equal(plan.find((item) => item.path === ".agents/config.json")?.action, "migrate");
+    assert.equal(plan.find((item) => item.path === ".aidlc/config.json")?.action, "delete");
+    applyUpgrade(root, plan);
+    assert.match(readFileSync(join(root, ".agents/config.json"), "utf8"), /legacy/);
+    assert.equal(existsSync(join(root, ".aidlc/config.json")), false);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

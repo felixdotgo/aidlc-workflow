@@ -190,8 +190,8 @@ const builtInProfiles = {
 const profileAlias = (id) => builtInProfiles[id] ? id : builtInProfiles[`topology/${id}`] ? `topology/${id}` : id;
 
 const loadConfig = (root) => {
-  const path = join(resolve(root), ".aidlc/config.json");
-  const item = existsSync(path) ? object(JSON.parse(readFileSync(path, "utf8")), ".aidlc/config.json") : {};
+  const path = join(resolve(root), ".agents/config.json");
+  const item = existsSync(path) ? object(JSON.parse(readFileSync(path, "utf8")), ".agents/config.json") : {};
   if (item.schemaVersion !== undefined && item.schemaVersion !== 1) throw new Error("Unsupported project config schema");
   const risk = object(item.risk ?? {}, "config.risk");
   const context = object(item.context ?? {}, "config.context");

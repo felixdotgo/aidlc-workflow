@@ -146,6 +146,15 @@ export const planUpgrade = (root: string): PlannedWrite[] => {
     const target = safePath(project, spec.path);
     plan.push(existsSync(target) ? { ...spec, content: readFileSync(target, "utf8"), action: "preserve", reason: `${spec.ownershipClass}-owned file` } : { ...spec, action: "create", reason: `new ${spec.ownershipClass}-owned file` });
   }
+  const legacyConfig = safePath(project, ".aidlc/config.json");
+  const canonicalConfig = safePath(project, ".agents/config.json");
+  if (existsSync(legacyConfig) && !existsSync(canonicalConfig)) {
+    const content = readFileSync(legacyConfig, "utf8");
+    JSON.parse(content);
+    const next = plan.find((item) => item.path === ".agents/config.json");
+    if (next) { next.content = content; next.action = "migrate"; next.reason = "migrate legacy project config"; }
+    plan.push({ path: ".aidlc/config.json", owner: "aidlc-project", ownershipClass: "project", content: "", action: "delete", reason: "remove migrated legacy project config" });
+  }
   if (legacy && !existsSync(safePath(project, ".agents/state/aidlc-state.json"))) {
     const migration = migrateLegacyBoard(project);
     plan.push({ path: ".agents/state/aidlc-state.json", owner: "aidlc-state", ownershipClass: "state", content: `${JSON.stringify(migration.state, null, 2)}\n`, action: "migrate", reason: "migrate legacy BOARD to canonical JSON state" });
