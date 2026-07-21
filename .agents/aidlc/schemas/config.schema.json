@@ -11,6 +11,7 @@
     "rules": { "type": "object", "required": ["include"], "properties": { "include": { "type": "array", "items": { "type": "string" } } } },
     "risk": { "type": "object", "required": ["default"], "properties": { "default": { "enum": ["low", "normal", "high", "regulated"] } } },
     "context": { "type": "object", "required": ["maxChars"], "properties": { "maxChars": { "type": "integer", "minimum": 4000, "maximum": 128000 } } },
+    "agentState": { "type": "object", "additionalProperties": { "enum": ["native", "scripted"] } },
     "eval": {
       "type": "object",
       "required": ["runners"],

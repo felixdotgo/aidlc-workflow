@@ -19,8 +19,7 @@ const collect = (directory: string, target: string): FileSpec[] => readdirSync(d
 });
 
 export const coreWorkflowFiles = (): FileSpec[] => [
-  ...collect(join(assetRoot, "aidlc"), ".agents/aidlc"),
-  ...collect(join(assetRoot, "skills"), ".agents/skills")
+  ...collect(join(assetRoot, "aidlc"), ".agents/aidlc")
 ];
 
 export const initialProjectFiles = (): FileSpec[] => [

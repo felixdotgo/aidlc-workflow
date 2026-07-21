@@ -1,4 +1,5 @@
 export type AgentId = "claude" | "codex" | "cursor" | "antigravity" | "kiro" | "generic";
+export type StateMutationMode = "native" | "scripted";
 export type Phase = "clarify" | "plan" | "build" | "wrap" | "done";
 export type Gate = "none" | "G0_confirm" | "G1_review" | "G2_codereview";
 export type TaskStatus = "active" | "blocked_on_user" | "paused" | "done";
@@ -64,6 +65,7 @@ export interface ProjectConfig {
   rules: { include: string[] };
   risk: { default: RiskLevel };
   context: { maxChars: number };
+  agentState: Partial<Record<AgentId, StateMutationMode>>;
   eval: { runners: Record<string, EvalRunner> };
 }
 

@@ -62,6 +62,8 @@ node .agents/aidlc/scripts/gate-check.mjs <task-id> --gate <gate>
 
 Every script defaults to the current working directory and accepts `--root <path>`. `.agents/state/aidlc-state.json` is the only persisted lifecycle state; `state.mjs task show` provides a human-readable JSON view on demand. The workflow does not create `BOARD.md`.
 
+For lifecycle mutations, `agentState` may opt an installed adapter into `native` file edits; omitted adapters use the safe `scripted` default. Native mode removes lifecycle-script approvals only and never bypasses human gates or build verification.
+
 ## Ownership and customization
 
 ```text

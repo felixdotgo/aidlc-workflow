@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
-import type { CommandSpec, Profile, ProjectConfig, RiskLevel } from "./model.js";
+import type { AgentId, CommandSpec, Profile, ProjectConfig, RiskLevel, StateMutationMode } from "./model.js";
 
 const profile = (id: Profile["topology"], markers: string[] = []): Profile => ({
   schemaVersion: 1,
@@ -76,6 +76,7 @@ export const defaultConfig = (): ProjectConfig => ({
   rules: { include: [] },
   risk: { default: "normal" },
   context: { maxChars: 16_000 },
+  agentState: {},
   eval: { runners: {} }
 });
 
@@ -89,6 +90,12 @@ export const loadProjectConfig = (root: string): ProjectConfig => {
   const levels: RiskLevel[] = ["low", "normal", "high", "regulated"];
   const riskDefault = String(risk.default ?? "normal") as RiskLevel;
   if (item.schemaVersion !== 1 || !levels.includes(riskDefault)) throw new Error("Unsupported project config schema or risk level");
+  const agentStateRaw = object(item.agentState ?? {}, "config.agentState");
+  const agentIds: AgentId[] = ["claude", "codex", "cursor", "antigravity", "kiro", "generic"];
+  const agentState = Object.fromEntries(Object.entries(agentStateRaw).map(([id, mode]) => {
+    if (!agentIds.includes(id as AgentId) || (mode !== "native" && mode !== "scripted")) throw new Error("config.agentState must map known adapters to native or scripted");
+    return [id, mode as StateMutationMode];
+  })) as Partial<Record<AgentId, StateMutationMode>>;
   const maxChars = Number(context.maxChars ?? 16_000);
   if (!Number.isInteger(maxChars) || maxChars < 4_000 || maxChars > 128_000) throw new Error("context.maxChars must be an integer from 4000 to 128000");
   return {
@@ -99,6 +106,7 @@ export const loadProjectConfig = (root: string): ProjectConfig => {
     rules: { include: strings(object(item.rules ?? {}, "config.rules").include ?? [], "config.rules.include").map((entry) => safeRelative(entry, "config.rules.include")) },
     risk: { default: riskDefault },
     context: { maxChars },
+    agentState,
     eval: { runners: Object.fromEntries(Object.entries(object(evalConfig.runners ?? {}, "config.eval.runners")).map(([id, spec]) => {
       const parsed = command(spec, `config.eval.runners.${id}`);
       const raw = object(spec, `config.eval.runners.${id}`);
