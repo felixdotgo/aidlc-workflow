@@ -37,9 +37,9 @@ test("publish evidence accepts one pinned passing runner", () => {
   const report = (runner: string): EvalReport => ({ runner, model: "economy", version: "pinned", scenarios: 30, completionRate: 1, averageScore: 9, structuralCompliance: 1, criticalViolations: 0, medianContextChars: 12_000, contextReduction: 0.64, passedReleaseGate: true, results: [] });
   try {
     const path = join(root, "release.json");
-    writeFileSync(path, JSON.stringify({ packageVersion: "2.0.0", createdAt: new Date().toISOString(), reports: [report("a"), report("b")] }));
-    assert.equal(verifyReleaseEvidence(path, "2.0.0").reports.length, 2);
-    writeFileSync(path, JSON.stringify({ packageVersion: "2.0.0", createdAt: new Date().toISOString(), reports: [report("a")] }));
-    assert.equal(verifyReleaseEvidence(path, "2.0.0").reports.length, 1);
+    writeFileSync(path, JSON.stringify({ packageVersion: "2.1.0", createdAt: new Date().toISOString(), reports: [report("a"), report("b")] }));
+    assert.equal(verifyReleaseEvidence(path, "2.1.0").reports.length, 2);
+    writeFileSync(path, JSON.stringify({ packageVersion: "2.1.0", createdAt: new Date().toISOString(), reports: [report("a")] }));
+    assert.equal(verifyReleaseEvidence(path, "2.1.0").reports.length, 1);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

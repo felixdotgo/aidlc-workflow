@@ -39,6 +39,8 @@ test("context packet includes canonical decisions and honors the configured budg
     const packet = compileContext(root, config, task, "build");
     assert.ok(packet.chars <= 8_000);
     assert.match(packet.content, /Keep invariant/);
+    assert.match(packet.content, /COSTARS build emphasis/);
+    assert.match(packet.content, /CRITICS section/);
     assert.match(packet.content, /Agents never run or detect upgrades/);
     assert.ok(packet.estimatedTokens > 0);
   } finally { rmSync(root, { recursive: true, force: true }); }

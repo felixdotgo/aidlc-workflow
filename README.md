@@ -9,8 +9,8 @@ The package never checks a registry, downloads runtime workflow assets, or upgra
 Preview first; add `--yes` only when intentionally applying a new installation:
 
 ```sh
-npx @felixdotgo/aidlc-workflow@2.0.0 init . --agent codex --dry-run
-npx @felixdotgo/aidlc-workflow@2.0.0 init . --agent codex --yes
+npx @felixdotgo/aidlc-workflow@2.1.0 init . --agent codex --dry-run
+npx @felixdotgo/aidlc-workflow@2.1.0 init . --agent codex --yes
 ```
 
 Use `--all` for every official adapter. Existing unmanaged files are conflicts unless the initial install explicitly uses `--force --yes`.
@@ -21,10 +21,10 @@ Only a human may initiate or apply workflow upgrades. AI agents are instructed n
 
 ```sh
 # Human previews the exact package version
-npx @felixdotgo/aidlc-workflow@2.0.0 upgrade . --dry-run
+npx @felixdotgo/aidlc-workflow@2.1.0 upgrade . --dry-run
 
 # Human applies in an interactive terminal and types the target version
-npx @felixdotgo/aidlc-workflow@2.0.0 upgrade .
+npx @felixdotgo/aidlc-workflow@2.1.0 upgrade .
 ```
 
 Upgrade has no `--yes` or `--force`. Apply requires a TTY and exact version confirmation. It stages and validates all writes, backs up changed files, records a journal, and rolls back on failure. Modified managed files produce conflicts before any write; `.aidlc/`, task state, and lessons are preserved.
@@ -100,6 +100,12 @@ Configuration is dependency-free JSON:
 
 Precedence is `kernel → built-in topology → local profile → project config/rules → approved task decisions`. Built-ins are `topology/generic`, `topology/single`, `topology/workspace`, and `topology/git-submodules`. Local profiles are declarative `profile.json` plus Markdown rules; executable JavaScript/TypeScript plugins and remote profile discovery are intentionally unsupported.
 
+### Multi-model collaboration
+
+The managed `templates/model-contract.md` supplies a provider-neutral collaboration contract. COSTARS structures task handoffs: context, objective, style, tone, audience, response format, and success criteria. CRITICS structures adversarial review: criteria, risks, issues, tests/evidence, improvements, conclusion, and escalation.
+
+Clarify, plan, and build use the relevant COSTARS fields. CRITICS is required for the G2 adversarial review and is used earlier only for elevated risk, ambiguous requirements, or model disagreement. These templates standardize model communication only: canonical state, executable verification, and human gates remain the authority for task progression. Projects may add narrower conventions through `.aidlc/rules/`.
+
 ## Economy-model evaluation
 
 The bundled suite contains 30 scenarios. A runner is a configured executable + argument array: it receives one scenario as JSON on stdin and returns:
@@ -115,7 +121,7 @@ The bundled suite contains 30 scenarios. A runner is a configured executable + a
 
 A release runner passes only with average score ≥8/10, completion ≥85%, 100% structural compliance, zero critical violations, and median context at least 50% below the 34,000-character v0.2.1 baseline. Every scenario runs in a separate temporary workspace. Manual/local release requires one pinned economy-model runner; additional reports are optional.
 
-Before publish, save one passing report into `.aidlc/release-eval.json` with `{ "packageVersion": "2.0.0", "createdAt": "<ISO timestamp>", "reports": [...] }`. `prepublishOnly` runs tests and `release:check`; missing, stale, incomplete, or below-threshold evidence blocks publication.
+Before publish, save one passing report into `.aidlc/release-eval.json` with `{ "packageVersion": "2.1.0", "createdAt": "<ISO timestamp>", "reports": [...] }`. `prepublishOnly` runs tests and `release:check`; missing, stale, incomplete, or below-threshold evidence blocks publication.
 
 ## Supported adapters
 

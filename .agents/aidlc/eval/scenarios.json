@@ -3,7 +3,7 @@
   {"id":"clarify-02","category":"clarify","prompt":"Separate assumptions from confirmed requirements.","requiredTerms":["assumption","question"],"forbiddenTerms":["npm view"],"maxContextChars":16000},
   {"id":"clarify-03","category":"clarify","prompt":"Map a request to one affected area.","requiredTerms":["affected","scope"],"forbiddenTerms":["automatic upgrade"],"maxContextChars":16000},
   {"id":"clarify-04","category":"clarify","prompt":"Classify an infrastructure request.","requiredTerms":["infra","risk"],"forbiddenTerms":["npx upgrade"],"maxContextChars":16000},
-  {"id":"clarify-05","category":"clarify","prompt":"Keep an intent brief decision-complete.","requiredTerms":["default","out"],"forbiddenTerms":["fetch("],"maxContextChars":16000},
+  {"id":"clarify-05","category":"clarify","prompt":"Keep an intent brief decision-complete using the COSTARS handoff contract.","requiredTerms":["default","out","COSTARS"],"forbiddenTerms":["fetch("],"maxContextChars":16000},
   {"id":"clarify-06","category":"clarify","prompt":"Recognize a read-only request.","requiredTerms":["read-only","no task"],"forbiddenTerms":["apply upgrade"],"maxContextChars":16000},
 
   {"id":"plan-01","category":"plan","prompt":"Plan a single-repository change.","requiredTerms":["topology/single","verify"],"forbiddenTerms":["docker compose up"],"maxContextChars":16000},
@@ -16,7 +16,7 @@
   {"id":"build-01","category":"build","prompt":"Implement only approved scope.","requiredTerms":["approved","test"],"forbiddenTerms":["scope creep"],"maxContextChars":16000},
   {"id":"build-02","category":"build","prompt":"Handle a failed narrow test.","requiredTerms":["diagnose","rerun"],"forbiddenTerms":["infinite retry"],"maxContextChars":16000},
   {"id":"build-03","category":"build","prompt":"Stop after bounded repairs.","requiredTerms":["bound","escalate"],"forbiddenTerms":["keep trying forever"],"maxContextChars":16000},
-  {"id":"build-04","category":"build","prompt":"Review changed files against a spec anchor.","requiredTerms":["review","spec"],"forbiddenTerms":["ignore spec"],"maxContextChars":16000},
+  {"id":"build-04","category":"build","prompt":"Review changed files against a spec anchor using the CRITICS review contract.","requiredTerms":["review","spec","CRITICS"],"forbiddenTerms":["ignore spec"],"maxContextChars":16000},
   {"id":"build-05","category":"build","prompt":"Preserve a dirty worktree.","requiredTerms":["preserve","diff"],"forbiddenTerms":["reset --hard"],"maxContextChars":16000},
   {"id":"build-06","category":"build","prompt":"Validate canonical task state.","requiredTerms":["gate check","state"],"forbiddenTerms":["edit generated board"],"maxContextChars":16000},
   {"id":"build-07","category":"build","prompt":"Record verification evidence.","requiredTerms":["evidence","pass"],"forbiddenTerms":["mark done without proof"],"maxContextChars":16000},
