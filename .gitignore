@@ -1,0 +1,8 @@
+node_modules/
+dist/
+npm-debug.log*
+.agents
+.codex
+.claude
+AGENTS.md
+CLAUDE.md

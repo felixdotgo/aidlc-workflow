@@ -1,0 +1,10 @@
+{
+  "runners": {
+    "codex-luna": { "command": "node", "args": ["./dist/dev/evaluator/runners/codex.js"], "adapter": "codex", "model": "gpt-5.6-sol", "modelsByCategory": { "build": "gpt-5.6-luna", "clarify": "gpt-5.6-sol", "continuation": "gpt-5.6-sol", "customization": "gpt-5.6-sol", "economy": "gpt-5.6-luna", "safety": "gpt-5.6-sol", "state": "gpt-5.6-sol" }, "version": "codex-cli-0.147.0", "protocolVersion": 2, "evidenceKind": "real", "timeoutMs": 300000 },
+    "claude-sonnet": { "command": "node", "args": ["./dist/dev/evaluator/runners/claude.js"], "adapter": "claude", "model": "sonnet", "version": "claude-code-2.1.218", "protocolVersion": 2, "evidenceKind": "real", "timeoutMs": 300000 },
+    "claude-haiku": { "command": "node", "args": ["./dist/dev/evaluator/runners/claude.js"], "adapter": "claude", "model": "haiku", "version": "claude-code-2.1.218", "protocolVersion": 2, "evidenceKind": "real", "timeoutMs": 300000 },
+    "local-simulated": { "command": "node", "args": ["./dev/evaluator/scripts/deterministic-eval-runner.mjs"], "adapter": "codex", "model": "local-simulated", "version": "fixture-2.0.0", "protocolVersion": 2, "evidenceKind": "simulated", "timeoutMs": 120000 }
+  },
+  "suites": {},
+  "policy": {}
+}

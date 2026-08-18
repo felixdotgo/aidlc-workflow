@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "topology/generic",
+  "topology": "generic",
+  "discovery": { "roots": ["."], "workspaceMarkers": [] },
+  "specs": { "roots": [] },
+  "commands": {},
+  "rules": { "include": [] }
+}

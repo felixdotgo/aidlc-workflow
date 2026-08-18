@@ -1,0 +1,13 @@
+{
+  "title": "AI-DLC local declarative adapter",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "displayName", "detect", "files"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
+    "displayName": { "type": "string", "minLength": 1 },
+    "detect": { "type": "array", "items": { "type": "string" } },
+    "files": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["path", "content"], "properties": { "path": { "type": "string" }, "content": { "type": "string" }, "strategy": { "enum": ["replace", "managed-block"] } } } }
+  }
+}

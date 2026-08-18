@@ -1,0 +1,13 @@
+{
+  "title": "AI-DLC evaluator runner protocol v2 result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["transport", "transcript"],
+  "properties": {
+    "transport": { "enum": ["completed", "error", "timeout"] },
+    "transcript": { "type": "string" },
+    "events": { "type": "array", "items": { "type": "object", "required": ["type"], "properties": { "type": { "type": "string" } } } },
+    "usage": { "type": "object", "properties": { "inputTokens": { "type": "number" }, "outputTokens": { "type": "number" }, "contextChars": { "type": "number" }, "latencyMs": { "type": "number" }, "costUsd": { "type": "number" } } },
+    "diagnostics": { "type": "array", "items": { "type": "string" } }
+  }
+}

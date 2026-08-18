@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "topology/git-submodules",
+  "topology": "git-submodules",
+  "discovery": { "roots": ["."], "workspaceMarkers": [".gitmodules"] },
+  "specs": { "roots": [] },
+  "commands": {},
+  "rules": { "include": [] }
+}

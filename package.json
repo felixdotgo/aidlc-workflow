@@ -1,0 +1,49 @@
+{
+  "name": "@felixdotgo/aidlc-workflow",
+  "version": "0.0.1",
+  "description": "Install a local, agent-adapted AI-DLC workflow into a project.",
+  "keywords": [
+    "ai-dlc",
+    "ai-agent",
+    "workflow",
+    "claude-code",
+    "codex",
+    "developer-tools"
+  ],
+  "homepage": "https://github.com/felixdotgo/aidlc-workflow#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/felixdotgo/aidlc-workflow.git"
+  },
+  "bugs": {
+    "url": "https://github.com/felixdotgo/aidlc-workflow/issues"
+  },
+  "author": "felixdotgo <nguyenthanhdat.js@gmail.com>",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "aidlc-workflow": "dist/src/cli.js"
+  },
+  "files": [
+    "dist/src",
+    "dist/assets",
+    "README.md",
+    "DEVELOPMENT.md",
+    "docs",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node scripts/build-assets.mjs && tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/test/unit/*.test.js",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "release:check": "node dist/dev/evaluator/release-check.js .agents/project/release-eval.json --adapters codex",
+    "prepublishOnly": "npm test && npm run lint && npm run release:check"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.0"
+  }
+}

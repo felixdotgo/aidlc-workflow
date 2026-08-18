@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "topology/single",
+  "topology": "single",
+  "discovery": { "roots": ["."], "workspaceMarkers": [] },
+  "specs": { "roots": [] },
+  "commands": {},
+  "rules": { "include": [] }
+}

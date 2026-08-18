@@ -1,0 +1,97 @@
+{
+  "title": "AI-DLC canonical state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "tasks", "archive"],
+  "properties": {
+    "schemaVersion": { "const": 3 },
+    "tasks": { "type": "object", "additionalProperties": { "$ref": "#/$defs/task" } },
+    "archive": { "type": "object", "additionalProperties": { "$ref": "#/$defs/archiveSummary" } }
+  },
+  "$defs": {
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "type", "phase", "gate", "status", "language", "risk", "areas", "branch", "artifacts", "decisions", "tasks", "evidence", "createdAt", "updatedAt"],
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "type": { "enum": ["feature", "bug", "refactor", "infra"] },
+        "phase": { "enum": ["clarify", "plan", "build", "wrap", "done"] },
+        "gate": { "enum": ["none", "G0_confirm", "G1_review", "G2_codereview"] },
+        "status": { "enum": ["active", "blocked_on_user", "paused", "done", "closed", "superseded"] },
+        "language": { "enum": ["vi", "en"] },
+        "risk": { "enum": ["low", "normal", "high", "regulated"] },
+        "areas": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "branch": { "type": "string" },
+        "artifacts": { "type": "object" },
+        "decisions": { "type": "array", "items": { "$ref": "#/$defs/decision" } },
+        "tasks": { "type": "array", "items": { "$ref": "#/$defs/executionTask" } },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
+        "lessons": { "type": "array", "items": { "$ref": "#/$defs/lesson" } },
+        "lessonDisposition": { "$ref": "#/$defs/lessonDisposition" },
+        "handoff": { "$ref": "#/$defs/handoff" },
+        "closure": { "$ref": "#/$defs/closure" },
+        "predecessorTaskId": { "type": "string", "minLength": 1 },
+        "successorTaskId": { "type": "string", "minLength": 1 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "allOf": [
+        { "if": { "properties": { "phase": { "const": "done" } }, "required": ["phase"] }, "then": { "properties": { "status": { "const": "done" } } } },
+        { "if": { "properties": { "status": { "const": "done" } }, "required": ["status"] }, "then": { "properties": { "phase": { "const": "done" } } } },
+        { "if": { "properties": { "status": { "enum": ["closed", "superseded"] } }, "required": ["status"] }, "then": { "required": ["closure"] }, "else": { "not": { "required": ["closure"] } } },
+        { "if": { "properties": { "status": { "const": "superseded" } }, "required": ["status"] }, "then": { "required": ["successorTaskId"] }, "else": { "not": { "required": ["successorTaskId"] } } },
+        { "if": { "required": ["handoff"] }, "then": { "properties": { "status": { "const": "paused" } } } }
+      ]
+    },
+    "archiveSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "type", "phase", "gate", "status", "risk", "areas", "record", "digest", "lessonCount", "createdAt", "updatedAt"],
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "type": { "enum": ["feature", "bug", "refactor", "infra"] },
+        "phase": { "enum": ["clarify", "plan", "build", "wrap", "done"] },
+        "gate": { "enum": ["none", "G0_confirm", "G1_review", "G2_codereview"] },
+        "status": { "enum": ["done", "closed", "superseded"] },
+        "risk": { "enum": ["low", "normal", "high", "regulated"] },
+        "areas": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "record": { "type": "string", "pattern": "^\\.agents/data/state/archive/[A-Za-z0-9][A-Za-z0-9._-]{0,127}\\.json$" },
+        "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "lessonCount": { "type": "integer", "minimum": 0 },
+        "predecessorTaskId": { "type": "string", "minLength": 1 },
+        "successorTaskId": { "type": "string", "minLength": 1 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "handoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "reason", "source", "recordedAt"],
+      "properties": {
+        "kind": { "enum": ["repair_exhausted", "review_exhausted", "g2_failed", "release_failed", "structural_change", "other"] },
+        "reason": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "recordedAt": { "type": "string" }
+      }
+    },
+    "closure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason", "source", "recordedAt"],
+      "properties": {
+        "reason": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "recordedAt": { "type": "string" }
+      }
+    },
+    "lesson": { "type": "object", "additionalProperties": false, "required": ["id", "taskId", "areas", "summary", "prevention", "example", "promotion", "source", "recordedAt"], "properties": { "id": { "type": "string" }, "taskId": { "type": "string" }, "areas": { "type": "array", "minItems": 1, "items": { "type": "string" } }, "summary": { "type": "string", "minLength": 1 }, "prevention": { "type": "string", "minLength": 1 }, "example": { "type": "string", "minLength": 1 }, "promotion": { "type": "string", "minLength": 1 }, "source": { "type": "string", "minLength": 1 }, "recordedAt": { "type": "string" } } },
+    "lessonDisposition": { "type": "object", "additionalProperties": false, "required": ["status", "source", "recordedAt"], "properties": { "status": { "enum": ["captured", "none"] }, "reason": { "type": "string", "minLength": 1 }, "source": { "type": "string", "minLength": 1 }, "recordedAt": { "type": "string" } } },
+    "decision": { "type": "object", "required": ["id", "label", "status"], "properties": { "id": { "type": "string" }, "label": { "type": "string" }, "status": { "enum": ["unresolved", "approved", "changed", "dropped"] }, "resolution": { "type": "string" } } },
+    "executionTask": { "type": "object", "required": ["id", "label", "status"], "properties": { "id": { "type": "string" }, "label": { "type": "string" }, "status": { "enum": ["todo", "in_progress", "done", "deferred"] } } },
+    "evidence": { "type": "object", "required": ["kind", "source", "result", "recordedAt"], "properties": { "kind": { "enum": ["approval", "spec", "test", "lint", "review", "diagnostic"] }, "gate": { "enum": ["none", "G0_confirm", "G1_review", "G2_codereview"] }, "area": { "type": "string" }, "source": { "type": "string" }, "result": { "enum": ["pass", "fail", "skip"] }, "detail": { "type": "string" }, "recordedAt": { "type": "string" } } }
+  }
+}

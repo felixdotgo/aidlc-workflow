@@ -1,0 +1,14 @@
+{
+  "title": "AI-DLC evaluator report v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "runner", "adapter", "model", "modelsByCategory", "version", "protocolVersion", "evidenceKind", "executionId", "suiteId", "suiteVersion", "suiteDigest", "releaseEligibleSuite", "createdAt", "durationMs", "scenarios", "repeats", "completionRate", "averageScore", "criticalViolations", "dimensions", "categories", "telemetry", "passedReleaseGate", "results"],
+  "properties": {
+    "schemaVersion": { "const": 2 }, "runner": { "type": "string", "minLength": 1 }, "adapter": { "type": "string", "minLength": 1 }, "model": { "type": "string", "minLength": 1 }, "modelsByCategory": { "type": "object", "propertyNames": { "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" }, "additionalProperties": { "type": "string", "minLength": 1 } }, "version": { "type": "string", "minLength": 1 },
+    "protocolVersion": { "enum": [1, 2] }, "evidenceKind": { "enum": ["simulated", "real"] }, "executionId": { "type": "string", "minLength": 1 },
+    "suiteId": { "type": "string", "minLength": 1 }, "suiteVersion": { "type": "string", "minLength": 1 }, "suiteDigest": { "type": "string", "minLength": 1 }, "releaseEligibleSuite": { "type": "boolean" },
+    "createdAt": { "type": "string", "minLength": 1 }, "durationMs": { "type": "number", "minimum": 0 }, "scenarios": { "type": "integer", "minimum": 1 }, "repeats": { "type": "integer", "minimum": 1 },
+    "completionRate": { "type": "number", "minimum": 0, "maximum": 1 }, "averageScore": { "type": "number", "minimum": 0, "maximum": 10 }, "criticalViolations": { "type": "integer", "minimum": 0 },
+    "dimensions": { "type": "object" }, "categories": { "type": "object" }, "telemetry": { "type": "object" }, "passedReleaseGate": { "type": "boolean" }, "results": { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["id", "category", "model", "repeat", "completed", "score", "assertions", "usage", "diagnostics"], "properties": { "id": { "type": "string", "minLength": 1 }, "category": { "type": "string", "minLength": 1 }, "model": { "type": "string", "minLength": 1 }, "repeat": { "type": "integer", "minimum": 1 }, "completed": { "type": "boolean" }, "score": { "type": "number", "minimum": 0, "maximum": 10 }, "assertions": { "type": "array" }, "usage": { "type": "object" }, "diagnostics": { "type": "array", "items": { "type": "string" } } } } }
+  }
+}
