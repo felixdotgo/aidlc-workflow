@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -9,6 +9,25 @@ import type { InitOptions } from "../../src/model.js";
 
 const options = (root: string): InitOptions => ({ root, agents: ["codex"], all: false, dryRun: false, yes: true, force: false });
 const run = (root: string, script: string, args: string[]): string => execFileSync(process.execPath, [join(root, ".agents/aidlc/scripts", script), ...args], { cwd: root, encoding: "utf8" });
+const runAsync = (root: string, script: string, args: string[]): Promise<void> => new Promise((resolveRun, rejectRun) => {
+  const child = spawn(process.execPath, [join(root, ".agents/aidlc/scripts", script), ...args], { cwd: root });
+  let stderr = "";
+  child.stderr.on("data", (chunk) => { stderr += String(chunk); });
+  child.once("error", rejectRun);
+  child.once("close", (code) => code === 0 ? resolveRun() : rejectRun(new Error(`state script exited ${code}: ${stderr}`)));
+});
+
+test("installed lifecycle scripts preserve every concurrent local mutation", async () => {
+  const root = mkdtempSync(join(tmpdir(), "aidlc-runtime-concurrent-"));
+  try {
+    applyPlan(root, planInit(options(root)));
+    const ids = Array.from({ length: 16 }, (_, index) => `2026-lock-${String(index).padStart(2, "0")}`);
+    await Promise.all(ids.map((id) => runAsync(root, "state.mjs", ["task", "create", id, "--title", `Concurrent ${id}`])));
+    const catalog = JSON.parse(run(root, "state.mjs", ["task", "list"]));
+    assert.equal(catalog.total, ids.length);
+    for (const id of ids) assert.equal(JSON.parse(run(root, "state.mjs", ["task", "show", id])).id, id);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 
 test("installed local scripts drive the lifecycle without an aidlc executable or BOARD", () => {
   const root = mkdtempSync(join(tmpdir(), "aidlc-runtime-"));

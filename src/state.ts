@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
 import type { AgenticMemoryEntry, AgenticMemoryRegistry, ArchivedTaskSummary, Diagnostic, Gate, HandoffKind, LessonIndex, LessonIndexEntry, LessonRecord, Phase, TaskState, WorkflowState } from "./model.js";
 import { resolveProjectPathWithoutSymlinks } from "./project-path.js";
@@ -7,6 +7,8 @@ import { resolveProjectPathWithoutSymlinks } from "./project-path.js";
 export const statePath = (root: string): string => join(resolve(root), ".agents/data/state/aidlc-state.json");
 export const lessonIndexPath = (root: string): string => join(resolve(root), ".agents/data/lessons/index.json");
 export const memoryRegistryPath = (root: string): string => join(resolve(root), ".agents/data/memory/agentic-memory.json");
+export const stateLockPath = (root: string): string => join(resolve(root), ".agents/data/state/.aidlc-state.lock");
+const stateLockGuardPath = (root: string): string => join(resolve(root), ".agents/data/state/.aidlc-state.lock.guard");
 export const emptyState = (): WorkflowState => ({ schemaVersion: 3, tasks: {}, archive: {} });
 export const emptyMemoryRegistry = (): AgenticMemoryRegistry => ({ schemaVersion: 1, entries: [], retired: [] });
 
@@ -29,6 +31,84 @@ const writeAtomic = (path: string, content: string): void => {
   const temporary = `${path}.tmp-${process.pid}-${Date.now()}`;
   writeFileSync(temporary, content, "utf8");
   renameSync(temporary, path);
+};
+
+interface LockRecord { token: string; pid: number; createdAt: number; }
+export interface StateLockOptions { timeoutMs?: number; retryMs?: number; staleMs?: number; }
+
+const sleep = (milliseconds: number): void => {
+  if (milliseconds > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+};
+
+const lockRecord = (path: string): LockRecord | undefined => {
+  try {
+    const value = JSON.parse(readFileSync(path, "utf8")) as Partial<LockRecord>;
+    return typeof value.token === "string" && typeof value.pid === "number" && Number.isInteger(value.pid) && value.pid > 0 && typeof value.createdAt === "number" && Number.isFinite(value.createdAt) ? value as LockRecord : undefined;
+  } catch { return undefined; }
+};
+
+const processAlive = (pid: number): boolean => {
+  try { process.kill(pid, 0); return true; }
+  catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
+};
+
+const tryCreateLock = (path: string, record: LockRecord): boolean => {
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    const descriptor = openSync(path, "wx", 0o600);
+    try { writeFileSync(descriptor, `${JSON.stringify(record)}\n`, "utf8"); }
+    finally { closeSync(descriptor); }
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+    throw error;
+  }
+};
+
+const removeOwnedLock = (path: string, token: string): void => {
+  if (lockRecord(path)?.token === token) unlinkSync(path);
+};
+
+const lockExpired = (record: LockRecord | undefined, now: number, staleMs: number): boolean => Boolean(record && now - record.createdAt >= staleMs && !processAlive(record.pid));
+
+/** Serializes lifecycle script mutations across local Node.js processes. */
+export const acquireStateLock = (root: string, options: StateLockOptions = {}): (() => void) => {
+  const timeoutMs = options.timeoutMs ?? 5_000;
+  const retryMs = options.retryMs ?? 25;
+  const staleMs = options.staleMs ?? 30_000;
+  const lockPath = stateLockPath(root);
+  const guardPath = stateLockGuardPath(root);
+  const token = randomUUID();
+  const deadline = Date.now() + timeoutMs;
+  assertNoSymlinkPath(root, ".agents/data/state/.aidlc-state.lock");
+  assertNoSymlinkPath(root, ".agents/data/state/.aidlc-state.lock.guard");
+  const acquireGuard = (): string | undefined => {
+    const guardToken = randomUUID();
+    const now = Date.now();
+    const existing = lockRecord(guardPath);
+    if (lockExpired(existing, now, staleMs)) removeOwnedLock(guardPath, existing!.token);
+    return tryCreateLock(guardPath, { token: guardToken, pid: process.pid, createdAt: now }) ? guardToken : undefined;
+  };
+  while (Date.now() <= deadline) {
+    const guardToken = acquireGuard();
+    if (!guardToken) { sleep(retryMs); continue; }
+    try {
+      const now = Date.now();
+      const existing = lockRecord(lockPath);
+      if (lockExpired(existing, now, staleMs)) removeOwnedLock(lockPath, existing!.token);
+      if (tryCreateLock(lockPath, { token, pid: process.pid, createdAt: now })) return () => {
+        const releaseDeadline = Date.now() + timeoutMs;
+        while (Date.now() <= releaseDeadline) {
+          const releaseGuard = acquireGuard();
+          if (!releaseGuard) { sleep(retryMs); continue; }
+          try { removeOwnedLock(lockPath, token); return; }
+          finally { removeOwnedLock(guardPath, releaseGuard); }
+        }
+      };
+    } finally { removeOwnedLock(guardPath, guardToken); }
+    sleep(retryMs);
+  }
+  throw new Error(`Timed out waiting for AI-DLC state lock after ${timeoutMs}ms`);
 };
 
 const validateLesson = (taskId: string, lesson: LessonRecord): void => {

@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-import { approveAndAdvance, closeTask, handoffTask, listTaskSummaries, loadMemoryRegistry, loadState, loadTask, migrateState, nextAction, option, promoteAgenticMemory, rebuildLessonIndex, recordLesson, recordNoLessons, renderViews, reopenTask, retireAgenticMemory, rootOption, saveState, searchLessons, supersedeTask, transitionTask, withoutOptions } from "./lib/runtime.mjs";
+import { acquireStateLock, approveAndAdvance, closeTask, handoffTask, listTaskSummaries, loadMemoryRegistry, loadState, loadTask, migrateState, nextAction, option, promoteAgenticMemory, rebuildLessonIndex, recordLesson, recordNoLessons, renderViews, reopenTask, retireAgenticMemory, rootOption, saveState, searchLessons, supersedeTask, transitionTask, withoutOptions } from "./lib/runtime.mjs";
 
 const raw = process.argv.slice(2);
 const root = rootOption(raw);
 const args = withoutOptions(raw);
 const [group, action, rawId] = args;
 const id = rawId?.startsWith("--") ? undefined : rawId;
+const releaseStateLock = acquireStateLock(root);
+process.once("exit", releaseStateLock);
 const state = loadState(root);
 const now = () => new Date().toISOString();
 const numberOption = (name, fallback) => {

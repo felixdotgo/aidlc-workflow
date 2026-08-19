@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
 
 const phases = ["clarify", "plan", "build", "wrap", "done"];
@@ -23,6 +23,32 @@ const writeAtomic = (path, content) => {
   writeFileSync(temporary, content, "utf8");
   renameSync(temporary, path);
 };
+
+const sleep = (milliseconds) => { if (milliseconds > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds); };
+const lockRecord = (path) => {
+  try {
+    const value = JSON.parse(readFileSync(path, "utf8"));
+    return typeof value.token === "string" && Number.isInteger(value.pid) && value.pid > 0 && Number.isFinite(value.createdAt) ? value : undefined;
+  } catch { return undefined; }
+};
+const processAlive = (pid) => {
+  try { process.kill(pid, 0); return true; }
+  catch (error) { return error?.code === "EPERM"; }
+};
+const tryCreateLock = (path, record) => {
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    const descriptor = openSync(path, "wx", 0o600);
+    try { writeFileSync(descriptor, `${JSON.stringify(record)}\n`, "utf8"); }
+    finally { closeSync(descriptor); }
+    return true;
+  } catch (error) {
+    if (error?.code === "EEXIST") return false;
+    throw error;
+  }
+};
+const removeOwnedLock = (path, token) => { if (lockRecord(path)?.token === token) unlinkSync(path); };
+const lockExpired = (record, now, staleMs) => Boolean(record && now - record.createdAt >= staleMs && !processAlive(record.pid));
 
 const validateLesson = (taskId, lesson) => {
   if (!lesson || !idPattern.test(lesson.id) || lesson.taskId !== taskId || !Array.isArray(lesson.areas) || !lesson.areas.length || lesson.areas.some((area) => !text(area)) || !text(lesson.summary) || !text(lesson.prevention) || !text(lesson.example) || !text(lesson.promotion) || !text(lesson.source) || !iso(lesson.recordedAt)) throw new Error(`Invalid lesson: ${taskId}`);
@@ -78,8 +104,41 @@ const archivedSummary = (task, content = taskRecordContent(task)) => ({ id: task
 export const statePath = (root) => join(resolve(root), ".agents/data/state/aidlc-state.json");
 export const lessonIndexPath = (root) => join(resolve(root), ".agents/data/lessons/index.json");
 export const memoryRegistryPath = (root) => join(resolve(root), ".agents/data/memory/agentic-memory.json");
+export const stateLockPath = (root) => join(resolve(root), ".agents/data/state/.aidlc-state.lock");
+const stateLockGuardPath = (root) => join(resolve(root), ".agents/data/state/.aidlc-state.lock.guard");
 export const emptyState = () => ({ schemaVersion: 3, tasks: {}, archive: {} });
 export const emptyMemoryRegistry = () => ({ schemaVersion: 1, entries: [], retired: [] });
+
+export const acquireStateLock = (root, options = {}) => {
+  const timeoutMs = options.timeoutMs ?? 5_000;
+  const retryMs = options.retryMs ?? 25;
+  const staleMs = options.staleMs ?? 30_000;
+  const lockPath = stateLockPath(root); const guardPath = stateLockGuardPath(root); const token = randomUUID(); const deadline = Date.now() + timeoutMs;
+  assertNoSymlinkPath(root, ".agents/data/state/.aidlc-state.lock"); assertNoSymlinkPath(root, ".agents/data/state/.aidlc-state.lock.guard");
+  const acquireGuard = () => {
+    const guardToken = randomUUID(); const now = Date.now(); const existing = lockRecord(guardPath);
+    if (lockExpired(existing, now, staleMs)) removeOwnedLock(guardPath, existing.token);
+    return tryCreateLock(guardPath, { token: guardToken, pid: process.pid, createdAt: now }) ? guardToken : undefined;
+  };
+  while (Date.now() <= deadline) {
+    const guardToken = acquireGuard();
+    if (!guardToken) { sleep(retryMs); continue; }
+    try {
+      const now = Date.now(); const existing = lockRecord(lockPath);
+      if (lockExpired(existing, now, staleMs)) removeOwnedLock(lockPath, existing.token);
+      if (tryCreateLock(lockPath, { token, pid: process.pid, createdAt: now })) return () => {
+        const releaseDeadline = Date.now() + timeoutMs;
+        while (Date.now() <= releaseDeadline) {
+          const releaseGuard = acquireGuard();
+          if (!releaseGuard) { sleep(retryMs); continue; }
+          try { removeOwnedLock(lockPath, token); return; } finally { removeOwnedLock(guardPath, releaseGuard); }
+        }
+      };
+    } finally { removeOwnedLock(guardPath, guardToken); }
+    sleep(retryMs);
+  }
+  throw new Error(`Timed out waiting for AI-DLC state lock after ${timeoutMs}ms`);
+};
 const memoryPhases = ["clarify", "plan", "build", "wrap", "*"];
 const validateMemoryEntry = (entry) => {
   if (!entry || !idPattern.test(entry.id) || !text(entry.summary) || !text(entry.guidance) || !Array.isArray(entry.areas) || !entry.areas.length || entry.areas.some((area) => !text(area)) || !Array.isArray(entry.phases) || !entry.phases.length || entry.phases.some((phase) => !memoryPhases.includes(phase)) || !Number.isInteger(entry.priority) || entry.priority < 0 || entry.priority > 100 || !idPattern.test(entry.sourceTaskId) || !idPattern.test(entry.sourceLessonId) || !text(entry.approvedBy) || !iso(entry.approvedAt)) throw new Error(`Invalid agentic memory entry: ${entry?.id ?? "unknown"}`);

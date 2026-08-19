@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { approveAndAdvance, checkGate } from "../../src/gate.js";
 import type { TaskState, WorkflowState } from "../../src/model.js";
-import { closeTask, handoffTask, nextAction, recordNoLessons, reopenTask, renderWorkplan, supersedeTask, transitionTask, validateState } from "../../src/state.js";
+import { acquireStateLock, closeTask, handoffTask, nextAction, recordNoLessons, reopenTask, renderWorkplan, stateLockPath, supersedeTask, transitionTask, validateState } from "../../src/state.js";
 
 const task = (): TaskState => ({
   id: "2026-0001-test", title: "Test task", type: "infra", phase: "clarify", gate: "G0_confirm", status: "active", language: "en", risk: "normal",
@@ -101,6 +101,26 @@ test("atomic gate approval is idempotent and exposes the next action", () => {
     const second = approveAndAdvance(root, state, current.id, "G0_confirm", "retry", "2026-01-01T00:00:02.000Z");
     assert.equal(second.idempotent, true);
     assert.equal(current.evidence.filter((item) => item.gate === "G0_confirm").length, 1);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("state lock serializes local writers and only reclaims a stale dead owner", () => {
+  const root = mkdtempSync(join(tmpdir(), "aidlc-state-lock-"));
+  try {
+    const release = acquireStateLock(root);
+    assert.throws(() => acquireStateLock(root, { timeoutMs: 5, retryMs: 1 }), /Timed out waiting for AI-DLC state lock/);
+    release();
+
+    const path = stateLockPath(root);
+    mkdirSync(join(root, ".agents/data/state"), { recursive: true });
+    writeFileSync(path, JSON.stringify({ token: "dead-owner", pid: 999_999, createdAt: 0 }));
+    const releaseStale = acquireStateLock(root, { timeoutMs: 20, retryMs: 1, staleMs: 0 });
+    releaseStale();
+    assert.equal(existsSync(path), false);
+
+    writeFileSync(path, JSON.stringify({ token: "live-owner", pid: process.pid, createdAt: 0 }));
+    assert.throws(() => acquireStateLock(root, { timeoutMs: 5, retryMs: 1, staleMs: 0 }), /Timed out waiting for AI-DLC state lock/);
+    assert.equal(JSON.parse(readFileSync(path, "utf8")).token, "live-owner");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
