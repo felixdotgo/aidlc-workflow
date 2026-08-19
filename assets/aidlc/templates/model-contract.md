@@ -2,7 +2,7 @@
 
 Use this managed baseline with any AI model. It standardizes communication; it does not replace canonical state, executable verification, human gates, or approved task decisions. Project-specific additions belong in `.agents/project/rules/`.
 
-## COSTARS — task handoff
+## COSTARS — task context
 
 Express the applicable parts of a task in this order:
 

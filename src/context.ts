@@ -50,7 +50,14 @@ export const compileContext = (root: string, config: ProjectConfig, task: TaskSt
   const ruleFiles = includedRuleFiles(root, effective.rules.include);
   if (options.itemId && !task.tasks.some((item) => item.id === options.itemId)) throw new Error(`Unknown task item: ${options.itemId}`);
   const taskState = compactTask(task, options.itemId);
-  const invariants = "- Continue after a non-terminal transition; yield only at a human gate, real blocker, or completion.\n- Never omit approved decisions, spec anchors, safety constraints, or applicable verification evidence.\n- Agents may run configured build/test/lint commands, but workflow installation and upgrades remain human-only npm/npx operations.";
+  const actionableItems = options.itemId ? task.tasks.filter((item) => item.status === "in_progress" || item.status === "todo").map((item) => item.id) : [];
+  const invariants = [
+    options.itemId ? `- Focused item context does not narrow the workplan: actionable items are ${actionableItems.join(", ") || "none"}; after this item, execute nextAction immediately.` : "",
+    "- Continue after a non-terminal transition or item/evidence mutation; yield only at a human gate, real blocker, or completion.",
+    "- Item completion is progress for commentary, never a final response while nextAction is run_phase.",
+    "- Never omit approved decisions, spec anchors, safety constraints, or applicable verification evidence.",
+    "- Agents may run configured build/test/lint commands, but workflow installation and upgrades remain human-only npm/npx operations."
+  ].filter(Boolean).join("\n");
   const action = JSON.stringify(nextAction(task), null, 2);
   const required = [
     `# AI-DLC phase packet — ${phase}`,

@@ -9,6 +9,8 @@ This skill is a thin Claude Code adapter. The canonical playbook is tool-agnosti
 
 **Read `.agents/aidlc/phase-build.md` and execute it exactly.**
 
+Completing a canonical item is progress, not a stopping point. Execute the mutation's returned `nextAction` immediately, loop across remaining items, and run `task-next.mjs <task-id> --require-stop` before any final response.
+
 - Shared conventions (canonical state, gates, continuation, evidence): `.agents/aidlc/conventions.md`
 - Common rules & orchestrator: `.agents/aidlc/orchestrator.md`
 - Templates: `.agents/aidlc/templates/` · Stack rules: `.agents/aidlc/rules/`

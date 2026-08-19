@@ -15,7 +15,7 @@ request → clarify → G0 → plan → G1 → build and verify → G2 → wrap 
 | Build | Approved change, verification, and adversarial review | Review the completed change at G2. |
 | Wrap | Delivery notes, lessons, and residual risk | Runs only after G2 approval. |
 
-An agent continues after each non-terminal transition. It stops only for a human gate, a durable blocker, or successful completion.
+An agent continues after each non-terminal transition and after every item or evidence mutation. Completing one work item is a progress update, not a turn boundary: the agent consumes the returned `nextAction` and continues through the remaining items, verification, and review. It stops only for a gate that is ready for human action, a durable blocker, a terminal non-success outcome, or successful completion.
 
 ## Starting work
 
@@ -41,6 +41,8 @@ node .agents/aidlc/scripts/gate-view.mjs <task-id>
 
 `task next` is the authoritative instruction for what happens next. `gate-view` renders the review packet consistently for G0, G1, and G2.
 
+Successful lifecycle mutations return a JSON envelope containing the affected task/result and `nextAction`. During build, the action identifies the next `in_progress` or `todo` item; after all items are terminal it still returns `run_phase` until verification, adversarial review, and G2 preparation finish. Before any final response, the agent runs `task-next.mjs <task-id> --require-stop`; exit code `2` with `CONTINUATION_REQUIRED` means it must execute the printed command instead of replying.
+
 ## Gates and approvals
 
 Approval is an explicit human action. When the agent receives an approval, it records the approval and advances the lifecycle atomically:
@@ -53,7 +55,7 @@ Do not invent approvals or approve unresolved design decisions. A reopened plan 
 
 ## Blocked work and successors
 
-`blocked_on_user` means a valid human gate is ready. It does not mean a failed change is waiting for a rubber stamp. When verification or review cannot pass, the workflow records a durable handoff and offers structured options.
+`blocked_on_user` means a valid human gate is ready. The status command validates gate prerequisites before persisting it, and `gate-view` refuses to present an active or unready task. It does not mean a failed change is waiting for a rubber stamp. When verification or review cannot pass, the workflow records a durable handoff and offers structured options.
 
 ```sh
 node .agents/aidlc/scripts/state.mjs task handoff <task-id> --kind <kind> --reason "<reason>" --source "<evidence>"

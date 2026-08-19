@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { TaskState, WorkflowState } from "../../src/model.js";
-import { transitionDiagnostics, transitionTask, validateState } from "../../src/state.js";
+import { nextAction, transitionDiagnostics, transitionTask, validateState } from "../../src/state.js";
 
 const task = (): TaskState => ({
   id: "core-fixture", title: "Shared-core fixture", type: "infra", phase: "clarify", gate: "G0_confirm", status: "active", language: "en", risk: "normal", areas: ["root"], branch: "—",
@@ -22,5 +22,15 @@ test("MCP lifecycle core and local lifecycle state reject and accept the same tr
   const approval = { kind: "approval" as const, gate: "G0_confirm" as const, source: "fixture", result: "pass" as const, recordedAt: "2026-01-01T00:00:01.000Z" };
   local.tasks["core-fixture"].evidence.push(approval); remote.tasks["core-fixture"].evidence.push(approval);
   transitionTask(local, "core-fixture", "plan"); core.transitionTask(remote, "core-fixture", "plan");
+  assert.equal(Number.isNaN(Date.parse(local.tasks["core-fixture"].updatedAt)), false);
+  assert.equal(Number.isNaN(Date.parse(remote.tasks["core-fixture"].updatedAt)), false);
+  remote.tasks["core-fixture"].updatedAt = local.tasks["core-fixture"].updatedAt;
   assert.deepEqual(remote, local);
+
+  const localTask = local.tasks["core-fixture"];
+  localTask.phase = "build"; localTask.gate = "G2_codereview";
+  localTask.tasks = [{ id: "T1", label: "First", status: "done" }, { id: "T2", label: "Second", status: "todo" }];
+  const remoteTask = structuredClone(localTask);
+  assert.deepEqual(core.nextAction(remoteTask), nextAction(localTask));
+  assert.equal(nextAction(localTask).itemId, "T2");
 });

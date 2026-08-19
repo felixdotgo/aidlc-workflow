@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "suiteId": "aidlc-official-agentic",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "releaseEligible": true,
   "scenarios": [
     {
@@ -60,6 +60,26 @@
         { "id": "transport", "dimension": "completion", "severity": "critical", "type": "transportCompleted" },
         { "id": "g2", "dimension": "state", "severity": "critical", "type": "jsonEquals", "path": ".agents/data/state/aidlc-state.json", "jsonPath": "tasks.eval-task.gate", "value": "G2_codereview" },
         { "id": "tool", "dimension": "tool", "severity": "high", "type": "eventObserved", "event": "command" }
+      ]
+    },
+    {
+      "id": "build-multi-item-continuation", "category": "continuation", "maxContextChars": 16000,
+      "setup": { "files": {
+        ".agents/config.json": "{\n  \"schemaVersion\": 2,\n  \"extends\": [\"topology/single\"],\n  \"specs\": { \"roots\": [] },\n  \"commands\": { \"test\": { \"command\": \"node\", \"args\": [\"verify-multi.mjs\"] } },\n  \"rules\": { \"include\": [] },\n  \"risk\": { \"default\": \"normal\" },\n  \"context\": { \"maxChars\": 16000 },\n  \"agentState\": {},\n  \"gates\": { \"G1\": { \"autoPass\": { \"enabled\": false } } }\n}\n",
+        ".agents/data/state/aidlc-state.json": "{\n  \"schemaVersion\": 3,\n  \"tasks\": {\n    \"eval-task\": {\n      \"id\": \"eval-task\", \"title\": \"Multi-item continuation fixture\", \"type\": \"bug\", \"phase\": \"build\", \"gate\": \"G2_codereview\", \"status\": \"active\", \"language\": \"en\", \"risk\": \"normal\", \"areas\": [\"root\"], \"branch\": \"—\",\n      \"artifacts\": { \"intent\": \".agents/data/tasks/eval-task/intent.md\", \"design\": \".agents/data/tasks/eval-task/design.md\", \"workplan\": \".agents/data/tasks/eval-task/workplan.md\" },\n      \"decisions\": [], \"tasks\": [{ \"id\": \"T1\", \"label\": \"Create first.txt\", \"status\": \"todo\" }, { \"id\": \"T2\", \"label\": \"Create second.txt\", \"status\": \"todo\" }, { \"id\": \"T3\", \"label\": \"Create third.txt\", \"status\": \"todo\" }],\n      \"evidence\": [{ \"kind\": \"approval\", \"gate\": \"G0_confirm\", \"result\": \"pass\", \"source\": \"fixture user approval\", \"recordedAt\": \"2026-01-01T00:00:01.000Z\" }, { \"kind\": \"approval\", \"gate\": \"G1_review\", \"result\": \"pass\", \"source\": \"fixture user approval\", \"recordedAt\": \"2026-01-01T00:00:02.000Z\" }],\n      \"createdAt\": \"2026-01-01T00:00:00.000Z\", \"updatedAt\": \"2026-01-01T00:00:02.000Z\"\n    }\n  },\n  \"archive\": {}\n}\n",
+        ".agents/data/tasks/eval-task/intent.md": "# Intent\n\n## 📋 Problem\nComplete all three fixture items.\n\n## 🗺️ Affected areas\n- root\n\n## 💭 Assumptions\n- none\n\n## ❓ Open questions\n1. none\n\n## 🎯 Scope\nIn: three files. Out: release.\n",
+        ".agents/data/tasks/eval-task/design.md": "# Design\n\n## 🧩 Solution per affected area\n- root — create all three files\n\n## 📌 Spec traceability\n| design | source | decision |\n|---|---|---|\n| three items | fixture | approved |\n\n## 🔗 Cross-service contracts\n- none\n\n## ⚠️ Risks / edge cases\n- stopping after one item\n",
+        ".agents/data/tasks/eval-task/workplan.md": "# Workplan\n\n- [ ] T1\n- [ ] T2\n- [ ] T3\n",
+        "verify-multi.mjs": "import { existsSync } from 'node:fs';\nfor (const file of ['first.txt', 'second.txt', 'third.txt']) if (!existsSync(file)) { console.error(`${file} is required`); process.exit(1); }\nconsole.log('multi-item verification passed');\n"
+      } },
+      "turns": [{ "role": "user", "input": "Resume existing eval-task. Complete T1, T2, and T3 in this run, executing each returned nextAction instead of stopping after an item; run configured verification, record CRITICS review evidence, and stop only at ready G2." }],
+      "assertions": [
+        { "id": "transport", "dimension": "completion", "severity": "critical", "type": "transportCompleted" },
+        { "id": "g2-status", "dimension": "continuation", "severity": "critical", "type": "jsonEquals", "path": ".agents/data/state/aidlc-state.json", "jsonPath": "tasks.eval-task.status", "value": "blocked_on_user" },
+        { "id": "g2-gate", "dimension": "continuation", "severity": "critical", "type": "jsonEquals", "path": ".agents/data/state/aidlc-state.json", "jsonPath": "tasks.eval-task.gate", "value": "G2_codereview" },
+        { "id": "t1", "dimension": "continuation", "severity": "critical", "type": "jsonEquals", "path": ".agents/data/state/aidlc-state.json", "jsonPath": "tasks.eval-task.tasks.0.status", "value": "done" },
+        { "id": "t2", "dimension": "continuation", "severity": "critical", "type": "jsonEquals", "path": ".agents/data/state/aidlc-state.json", "jsonPath": "tasks.eval-task.tasks.1.status", "value": "done" },
+        { "id": "t3", "dimension": "continuation", "severity": "critical", "type": "jsonEquals", "path": ".agents/data/state/aidlc-state.json", "jsonPath": "tasks.eval-task.tasks.2.status", "value": "done" }
       ]
     },
     {

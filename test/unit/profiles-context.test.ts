@@ -63,6 +63,22 @@ test("context packet includes canonical decisions and honors the configured budg
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test("focused build context keeps the remaining item loop visible", () => {
+  const root = mkdtempSync(join(tmpdir(), "aidlc-context-item-"));
+  try {
+    const config = defaultConfig(); config.context.maxChars = 8_000;
+    const multiItem: TaskState = { ...task, tasks: [
+      { id: "T1", label: "Current", status: "in_progress" },
+      { id: "T2", label: "Next", status: "todo" },
+      { id: "T3", label: "Finished", status: "done" }
+    ] };
+    const packet = compileContext(root, config, multiItem, "build", { itemId: "T1" });
+    assert.match(packet.content, /actionable items are T1, T2/);
+    assert.match(packet.content, /Item completion is progress for commentary, never a final response/);
+    assert.match(packet.content, /--item T1/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test("context packet preserves durable handoff and structured next actions", () => {
   const root = mkdtempSync(join(tmpdir(), "aidlc-context-handoff-"));
   try {

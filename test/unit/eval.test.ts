@@ -20,9 +20,9 @@ const report = (runner: string, adapter: string, evidenceKind: "real" | "simulat
 test("bundled agentic suite is versioned and release eligible", () => {
   const suite = loadEvalSuite();
   assert.equal(suite.schemaVersion, 2);
-  assert.equal(suite.version, "2.2.0");
+  assert.equal(suite.version, "2.3.0");
   assert.equal(suite.releaseEligible, true);
-  assert.equal(suite.scenarios.length, 12);
+  assert.equal(suite.scenarios.length, 13);
   assert.ok(suite.scenarios.some((item) => item.turns.length > 1));
   assert.ok(suite.scenarios.some((item) => item.assertions.some((assertion) => assertion.type === "jsonEquals")));
   assert.ok(suite.scenarios.some((item) => item.assertions.some((assertion) => assertion.type === "eventNotObserved")));
@@ -30,7 +30,7 @@ test("bundled agentic suite is versioned and release eligible", () => {
   assert.ok(supportedAdapters?.assertions.some((assertion) => assertion.id === "no-remote" && assertion.type === "eventNotObserved" && assertion.event === "network"));
   const boundedRepair = suite.scenarios.find((item) => item.id === "build-bounded-repair");
   assert.ok(boundedRepair?.assertions.some((assertion) => assertion.id === "handoff-kind" && assertion.type === "jsonEquals" && assertion.jsonPath === "tasks.eval-task.handoff.kind"));
-  for (const id of ["build-bounded-repair", "g2-to-wrap"]) validateState(JSON.parse(suite.scenarios.find((item) => item.id === id)?.setup?.files?.[".agents/data/state/aidlc-state.json"] ?? "null"));
+  for (const id of ["build-multi-item-continuation", "build-bounded-repair", "g2-to-wrap"]) validateState(JSON.parse(suite.scenarios.find((item) => item.id === id)?.setup?.files?.[".agents/data/state/aidlc-state.json"] ?? "null"));
 });
 
 test("scenario timeout gives every turn its configured budget plus fixed harness grace", () => {

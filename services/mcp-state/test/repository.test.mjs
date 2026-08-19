@@ -12,11 +12,37 @@ test("SQLite repository serializes revisions, indexes, events and idempotent ret
     assert.equal(initial.revision, 0);
     const first = await repository.apply("demo", 0, "request-1", { type: "upsertTask", taskId: "T1", task });
     assert.equal(first.revision, 1); assert.deepEqual(first.index.taskIds, ["T1"]);
+    assert.equal(first.nextActions.T1.classification, "run_phase");
     const retry = await repository.apply("demo", 0, "request-1", { type: "upsertTask", taskId: "T1", task: { ...task, title: "ignored" } });
     assert.deepEqual(retry, first);
     await assert.rejects(() => repository.apply("demo", 0, "request-2", { type: "removeTask", taskId: "T1" }), RevisionConflict);
     const events = await repository.eventsSince("demo");
     assert.equal(events.length, 1); assert.equal(events[0].revision, 1);
+  } finally { repository.close(); }
+});
+
+test("service mutation responses preserve multi-item continuation and reject premature G2 waits", async () => {
+  const repository = new SqliteStateRepository(":memory:");
+  try {
+    const build = {
+      ...task, phase: "build", gate: "G2_codereview", status: "active",
+      tasks: [{ id: "T1", label: "First", status: "done" }, { id: "T2", label: "Second", status: "todo" }],
+      evidence: [{ kind: "approval", gate: "G1_review", source: "human", result: "pass", recordedAt: "2026-01-01T00:00:01.000Z" }]
+    };
+    const first = await repository.apply("loop", 0, "build", { type: "upsertTask", taskId: "T1", task: build });
+    assert.equal(first.nextActions.T1.itemId, "T2"); assert.equal(first.nextActions.T1.remainingItems, 1);
+
+    await assert.rejects(() => repository.apply("loop", first.revision, "premature", { type: "upsertTask", taskId: "T1", task: { ...build, status: "blocked_on_user" } }), /cannot enter blocked_on_user/);
+
+    const ready = {
+      ...build, status: "blocked_on_user", tasks: build.tasks.map((item) => ({ ...item, status: "done" })),
+      evidence: [...build.evidence,
+        { kind: "test", area: "root", source: "service test", result: "pass", recordedAt: "2026-01-01T00:00:02.000Z" },
+        { kind: "review", source: "service review", result: "pass", recordedAt: "2026-01-01T00:00:03.000Z" }
+      ]
+    };
+    const prepared = await repository.apply("loop", first.revision, "ready", { type: "upsertTask", taskId: "T1", task: ready });
+    assert.equal(prepared.nextActions.T1.classification, "await_user");
   } finally { repository.close(); }
 });
 

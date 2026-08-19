@@ -7,6 +7,7 @@ const [id] = withoutOptions(raw);
 const state = loadState(root);
 const task = state.tasks[id];
 if (!task) throw new Error(`Unknown active task: ${id}`);
+if (task.status !== "blocked_on_user") throw new Error(`Task must be blocked_on_user before presenting ${task.gate}`);
 const format = option(raw, "--format") ?? "markdown";
 if (!["markdown", "plain", "json"].includes(format)) throw new Error("--format must be markdown, plain, or json");
 console.log(formatGateView(task, checkGate(root, state, id, task.gate), format).trimEnd());

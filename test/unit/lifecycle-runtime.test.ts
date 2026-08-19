@@ -50,6 +50,7 @@ test("installed local scripts drive the lifecycle without an aidlc executable or
     assert.equal(g0Retry.idempotent, true);
     run(root, "state.mjs", ["decision", "set", id, "D1", "--status", "approved", "--label", "Use local scripts", "--resolution", "approved choice"]);
     run(root, "state.mjs", ["task", "item", id, "T1", "--status", "todo", "--label", "Implement runtime"]);
+    run(root, "state.mjs", ["task", "item", id, "T2", "--status", "todo", "--label", "Verify continuation"]);
     run(root, "state.mjs", ["task", "status", id, "--status", "blocked_on_user"]);
     const g1 = JSON.parse(run(root, "state.mjs", ["gate", "approve", id, "--gate", "G1_review", "--source", "human approval"]));
     assert.equal(g1.task.phase, "build");
@@ -57,8 +58,16 @@ test("installed local scripts drive the lifecycle without an aidlc executable or
     const blocked = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/gate-check.mjs"), id, "--gate", "G2_codereview"], { cwd: root, encoding: "utf8" });
     assert.equal(blocked.status, 1);
     assert.match(blocked.stdout, /TASKS_OPEN/);
-    run(root, "state.mjs", ["task", "item", id, "T1", "--status", "done"]);
-    run(root, "state.mjs", ["evidence", "add", id, "--kind", "test", "--area", "root", "--result", "pass", "--source", "runtime smoke", "--detail", "label with spaces"]);
+    const prematureItems = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "task", "status", id, "--status", "blocked_on_user"], { cwd: root, encoding: "utf8" });
+    assert.notEqual(prematureItems.status, 0); assert.match(prematureItems.stderr, /TASKS_OPEN/);
+    const firstItem = JSON.parse(run(root, "state.mjs", ["task", "item", id, "T1", "--status", "done"]));
+    assert.equal(firstItem.nextAction.itemId, "T2"); assert.equal(firstItem.nextAction.remainingItems, 1);
+    const secondItem = JSON.parse(run(root, "state.mjs", ["task", "item", id, "T2", "--status", "done"]));
+    assert.equal(secondItem.nextAction.classification, "run_phase"); assert.equal(secondItem.nextAction.remainingItems, 0);
+    const prematureEvidence = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "task", "status", id, "--status", "blocked_on_user"], { cwd: root, encoding: "utf8" });
+    assert.notEqual(prematureEvidence.status, 0); assert.match(prematureEvidence.stderr, /VERIFY_EVIDENCE/);
+    const evidence = JSON.parse(run(root, "state.mjs", ["evidence", "add", id, "--kind", "test", "--area", "root", "--result", "pass", "--source", "runtime smoke", "--detail", "label with spaces"]));
+    assert.equal(evidence.nextAction.classification, "run_phase");
     run(root, "state.mjs", ["evidence", "add", id, "--kind", "review", "--result", "pass", "--source", "adversarial review"]);
 
     assert.match(run(root, "gate-check.mjs", [id, "--gate", "G2_codereview"]), /GATE_OK/);
@@ -66,7 +75,8 @@ test("installed local scripts drive the lifecycle without an aidlc executable or
     const latestFail = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/gate-check.mjs"), id, "--gate", "G2_codereview"], { cwd: root, encoding: "utf8" });
     assert.equal(latestFail.status, 1); assert.match(latestFail.stdout, /root/);
     run(root, "state.mjs", ["evidence", "add", id, "--kind", "lint", "--area", "root", "--result", "pass", "--source", "repaired"]);
-    run(root, "state.mjs", ["task", "status", id, "--status", "blocked_on_user"]);
+    const prepared = JSON.parse(run(root, "state.mjs", ["task", "status", id, "--status", "blocked_on_user"]));
+    assert.equal(prepared.nextAction.classification, "await_user");
     const next = JSON.parse(run(root, "state.mjs", ["task", "next", id]));
     assert.equal(next.classification, "await_user");
     assert.match(run(root, "gate-view.mjs", [id, "--format", "plain"]), /^\[IMPORTANT\].*GATE G2/);

@@ -140,6 +140,8 @@ test("official adapters carry the human-only upgrade boundary", () => {
     assert.match(file.content, /terminal/);
     assert.match(file.content, /only.*complete|complete.*successful/i);
     assert.match(file.content, /Never invent/);
+    assert.match(file.content, /task-next\.mjs <task-id> --require-stop/);
+    assert.match(file.content, /item.*progress/i);
   }
   assert.deepEqual(adapters.map((adapter) => adapter.id), ["claude", "codex"]);
   for (const file of adapters.find((adapter) => adapter.id === "claude")?.files() ?? []) if (file.path.includes(".claude/skills/")) assert.match(file.content, /allowed-tools: Bash\(node \.agents\/aidlc\/scripts\/\*\)/);

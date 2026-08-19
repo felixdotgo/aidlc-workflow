@@ -73,6 +73,7 @@ const markdownLinkTarget = (value: string): string => encodeURI(value).replace(/
 
 export const gateView = (task: TaskState, diagnostics: Diagnostic[]) => {
   if (task.gate === "none") throw new Error(`Task has no human gate: ${task.id}`);
+  if (task.status !== "blocked_on_user") throw new Error(`Task must be blocked_on_user before presenting ${task.gate}`);
   const errors = diagnostics.filter((item) => item.level === "ERROR");
   if (errors.length) throw new Error(errors.map((item) => item.message).join("; "));
   const meta = gateMeta[task.gate];

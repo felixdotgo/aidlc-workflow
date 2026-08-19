@@ -247,8 +247,20 @@ export const nextAction = (task) => {
   if (["closed", "superseded"].includes(task.status)) return { classification: "terminal", phase: task.phase, gate: task.gate, outcome: task.status, successorTaskId: task.successorTaskId, reason: task.closure?.reason ?? "Task ended without successful completion" };
   if (task.handoff) return { classification: "blocked", phase: task.phase, gate: task.gate, reason: task.handoff.reason, actions: [...(task.phase === "build" ? [{ id: "reopen_g1", command: `node .agents/aidlc/scripts/state.mjs task reopen ${task.id} --to plan --reason <reason> --source <explicit-user-request>` }] : []), { id: "create_successor", command: "node .agents/aidlc/scripts/state.mjs task create <new-task-id> --title <title>" }, { id: "close", command: `node .agents/aidlc/scripts/state.mjs task close ${task.id} --reason <reason> --source <explicit-user-request>` }] };
   if (task.status === "paused") return { classification: "blocked", phase: task.phase, gate: task.gate, reason: "Task is paused" };
-  if (task.status === "blocked_on_user" && task.gate === "G2_codereview" && (task.tasks.some((item) => !["done", "deferred"].includes(item.status)) || !hasVerification(task) || !hasReview(task))) return { classification: "blocked", phase: task.phase, gate: task.gate, reason: "G2 prerequisites are not satisfied; repair the task or record a durable handoff before requesting approval", actions: [{ id: "record_handoff", command: `node .agents/aidlc/scripts/state.mjs task handoff ${task.id} --kind g2_failed --reason <reason> --source <source>` }] };
+  if (task.status === "blocked_on_user" && task.gate === "G1_review" && task.decisions.some((decision) => decision.status === "unresolved")) return { classification: "run_phase", phase: task.phase, gate: task.gate, command: `node .agents/aidlc/scripts/context.mjs ${task.id} --phase plan`, reason: "Invalid premature G1 wait; resolve every decision before presenting G1" };
+  if (task.status === "blocked_on_user" && task.gate === "G2_codereview" && (task.tasks.some((item) => !["done", "deferred"].includes(item.status)) || !hasVerification(task) || !hasReview(task))) {
+    const open = task.tasks.filter((item) => item.status === "in_progress" || item.status === "todo");
+    const item = open.find((entry) => entry.status === "in_progress") ?? open[0];
+    if (item) return { classification: "run_phase", phase: task.phase, gate: task.gate, itemId: item.id, remainingItems: open.length, command: `node .agents/aidlc/scripts/context.mjs ${task.id} --phase build --item ${item.id}`, reason: `Invalid premature G2 wait; continue build item ${item.id}` };
+    return { classification: "run_phase", phase: task.phase, gate: task.gate, remainingItems: 0, command: `node .agents/aidlc/scripts/context.mjs ${task.id} --phase build`, reason: "Invalid premature G2 wait; continue verification and adversarial review before presenting G2" };
+  }
   if (task.status === "blocked_on_user") return { classification: "await_user", phase: task.phase, gate: task.gate, command: `node .agents/aidlc/scripts/state.mjs gate approve ${task.id} --gate ${task.gate} --source <explicit-user-approval>`, reason: `Explicit human approval is required at ${task.gate}` };
+  if (task.phase === "build") {
+    const open = task.tasks.filter((item) => item.status === "in_progress" || item.status === "todo");
+    const item = open.find((entry) => entry.status === "in_progress") ?? open[0];
+    if (item) return { classification: "run_phase", phase: task.phase, gate: task.gate, itemId: item.id, remainingItems: open.length, command: `node .agents/aidlc/scripts/context.mjs ${task.id} --phase build --item ${item.id}`, reason: `Continue build item ${item.id}; ${open.length} actionable item(s) remain before verification, review, and G2` };
+    return { classification: "run_phase", phase: task.phase, gate: task.gate, remainingItems: 0, command: `node .agents/aidlc/scripts/context.mjs ${task.id} --phase build`, reason: "All build items are terminal; continue verification, adversarial review, and G2 preparation" };
+  }
   return { classification: "run_phase", phase: task.phase, gate: task.gate, command: `node .agents/aidlc/scripts/context.mjs ${task.id} --phase ${task.phase}`, reason: `Continue ${task.phase} until the next human gate, real blocker, or completion` };
 };
 

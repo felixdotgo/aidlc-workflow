@@ -23,7 +23,7 @@ npm run build
 node --test dist/test/unit/installer.test.js
 ```
 
-Choose the test closest to the changed boundary. For example, use installer tests for package inventory or documentation assertions, upgrade tests for migration semantics, and lifecycle-runtime tests when touching installed scripts.
+Choose the test closest to the changed boundary. For example, use installer tests for package inventory or documentation assertions, upgrade tests for migration semantics, and lifecycle-runtime tests when touching installed scripts. Continuation changes must also run `continuation-guard`, multi-item lifecycle runtime, context, and local/MCP lifecycle conformance coverage.
 
 ## Package smoke test
 
@@ -58,6 +58,8 @@ node dist/dev/evaluator/cli.js run --runner local-simulated
 ```
 
 Runners exchange JSON, and reports capture transport, transcript, normalised events, usage, and diagnostics. Real Codex or Claude runs can consume credentials and model budget; they are not required for ordinary development verification.
+
+The release-eligible suite includes `build-multi-item-continuation`, which starts with three canonical build items and requires one agent run to complete all of them, record verification/review evidence, and stop only at a ready G2. This complements unit guards by exercising the model-facing continuation contract.
 
 The release checker validates required evidence according to the configured adapter policy. This repository's script uses the Codex-only policy:
 

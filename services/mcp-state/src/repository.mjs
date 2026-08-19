@@ -1,12 +1,20 @@
 import Database from "better-sqlite3";
 import pg from "pg";
-import { transitionTask, validateState } from "./lifecycle-core.mjs";
+import { nextAction, transitionTask, validateState } from "./lifecycle-core.mjs";
 
 const emptyState = () => ({ schemaVersion: 3, tasks: {}, archive: {} });
 const emptyIndex = (revision) => ({ schemaVersion: 1, sourceRevision: revision, taskIds: [], updatedAt: new Date().toISOString() });
 const parse = (value) => JSON.parse(value);
 const encode = (value) => JSON.stringify(value);
 const snapshot = (row) => ({ workspace: row.workspace, revision: Number(row.revision), state: parse(row.state), index: parse(row.task_index), updatedAt: row.updated_at });
+const mutationResult = (state, index, touchedTaskIds = []) => {
+  validateState(state);
+  for (const taskId of touchedTaskIds) {
+    const task = state.tasks?.[taskId];
+    if (task?.status === "blocked_on_user" && nextAction(task).classification !== "await_user") throw new Error(`Task ${taskId} cannot enter blocked_on_user before its gate is ready`);
+  }
+  return { state, index, touchedTaskIds };
+};
 
 export class RevisionConflict extends Error {
   constructor(current) { super(`State revision conflict: expected a newer snapshot than ${current.revision}`); this.name = "RevisionConflict"; this.current = current; }
@@ -18,29 +26,30 @@ const applyCommand = (current, command) => {
   let index = structuredClone(current.index);
   if (command.type === "replaceState") {
     if (!command.state || typeof command.state !== "object" || Array.isArray(command.state)) throw new Error("replaceState requires an object state");
-    const next = { state: structuredClone(command.state), index }; validateState(next.state); return next;
+    const nextState = structuredClone(command.state);
+    return mutationResult(nextState, index, Object.keys(nextState.tasks ?? {}));
   }
   if (command.type === "upsertTask") {
     if (typeof command.taskId !== "string" || !command.taskId || !command.task || typeof command.task !== "object" || Array.isArray(command.task)) throw new Error("upsertTask requires taskId and task");
     state.tasks ??= {}; state.tasks[command.taskId] = structuredClone(command.task);
     index = { ...index, taskIds: Object.keys(state.tasks).sort() };
-    validateState(state); return { state, index };
+    return mutationResult(state, index, [command.taskId]);
   }
   if (command.type === "removeTask") {
     if (typeof command.taskId !== "string" || !command.taskId) throw new Error("removeTask requires taskId");
     delete state.tasks?.[command.taskId];
     index = { ...index, taskIds: Object.keys(state.tasks ?? {}).sort() };
-    validateState(state); return { state, index };
+    return mutationResult(state, index);
   }
   if (command.type === "transition") {
     if (typeof command.taskId !== "string" || typeof command.target !== "string") throw new Error("transition requires taskId and target");
-    transitionTask(state, command.taskId, command.target); validateState(state);
+    transitionTask(state, command.taskId, command.target);
     index = { ...index, taskIds: Object.keys(state.tasks ?? {}).sort() };
-    return { state, index };
+    return mutationResult(state, index, [command.taskId]);
   }
   if (command.type === "replaceIndex") {
     if (!command.index || typeof command.index !== "object" || Array.isArray(command.index)) throw new Error("replaceIndex requires an object index");
-    return { state, index: structuredClone(command.index) };
+    return mutationResult(state, structuredClone(command.index));
   }
   throw new Error(`Unsupported state command: ${command.type}`);
 };
@@ -94,7 +103,8 @@ export class SqliteStateRepository {
       const next = applyCommand(current, command);
       const revision = current.revision + 1; const updatedAt = new Date().toISOString();
       next.index = { ...next.index, sourceRevision: revision, updatedAt };
-      const response = { workspace, revision, state: next.state, index: next.index, updatedAt };
+      const nextActions = Object.fromEntries(next.touchedTaskIds.flatMap((taskId) => next.state.tasks?.[taskId] ? [[taskId, nextAction(next.state.tasks[taskId])]] : []));
+      const response = { workspace, revision, state: next.state, index: next.index, nextActions, updatedAt };
       this.db.prepare("UPDATE state_workspaces SET revision = ?, state = ?, task_index = ?, updated_at = ? WHERE workspace = ?")
         .run(revision, encode(next.state), encode(next.index), updatedAt, workspace);
       this.db.prepare("INSERT INTO state_events (workspace, revision, idempotency_key, command, recorded_at) VALUES (?, ?, ?, ?, ?)")
@@ -128,7 +138,7 @@ export class PostgresStateRepository {
       const stored = (await client.query("SELECT response FROM state_idempotency WHERE workspace = $1 AND idempotency_key = $2", [workspace, idempotencyKey])).rows[0]; if (stored) { await client.query("COMMIT"); return stored.response; }
       const row = (await client.query("SELECT workspace, revision, state, task_index, updated_at FROM state_workspaces WHERE workspace = $1 FOR UPDATE", [workspace])).rows[0]; const current = { workspace: row.workspace, revision: Number(row.revision), state: row.state, index: row.task_index, updatedAt: row.updated_at };
       if (current.revision !== expectedRevision) throw new RevisionConflict(current);
-      const next = applyCommand(current, command); const revision = current.revision + 1; const updatedAt = new Date().toISOString(); next.index = { ...next.index, sourceRevision: revision, updatedAt }; const response = { workspace, revision, state: next.state, index: next.index, updatedAt };
+      const next = applyCommand(current, command); const revision = current.revision + 1; const updatedAt = new Date().toISOString(); next.index = { ...next.index, sourceRevision: revision, updatedAt }; const nextActions = Object.fromEntries(next.touchedTaskIds.flatMap((taskId) => next.state.tasks?.[taskId] ? [[taskId, nextAction(next.state.tasks[taskId])]] : [])); const response = { workspace, revision, state: next.state, index: next.index, nextActions, updatedAt };
       await client.query("UPDATE state_workspaces SET revision = $1, state = $2, task_index = $3, updated_at = $4 WHERE workspace = $5", [revision, next.state, next.index, updatedAt, workspace]);
       await client.query("INSERT INTO state_events (workspace, revision, idempotency_key, command, recorded_at) VALUES ($1, $2, $3, $4, $5)", [workspace, revision, idempotencyKey, command, updatedAt]);
       await client.query("INSERT INTO state_idempotency (workspace, idempotency_key, response) VALUES ($1, $2, $3)", [workspace, idempotencyKey, response]); await client.query("COMMIT"); return response;

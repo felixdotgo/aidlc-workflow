@@ -71,7 +71,12 @@ node .agents/aidlc/scripts/state.mjs task list --limit 20
 node .agents/aidlc/scripts/state.mjs task find --query "<words>" --include-archive
 node .agents/aidlc/scripts/state.mjs task show <task-id>
 node .agents/aidlc/scripts/state.mjs task next <task-id>
+node .agents/aidlc/scripts/task-next.mjs <task-id> --require-stop
 node .agents/aidlc/scripts/gate-view.mjs <task-id>
 ```
+
+Every successful lifecycle mutation prints a JSON envelope with the affected `task` (and any command-specific result) plus a derived `nextAction`. Callers must execute `run_phase` actions immediately; a successful mutation is not permission to stop. In build, the action includes `itemId`, `remainingItems`, and an item-focused context command while work remains.
+
+`task-next.mjs --require-stop` prints the current action and exits `2` when its classification is `run_phase`; `CONTINUATION_REQUIRED` on stderr is a local guard against a premature final response. It exits normally for a valid human gate, durable blocker, terminal outcome, or completion. `task status ... --status blocked_on_user` fails instead of persisting when the current gate is not ready, and `gate-view.mjs` only renders tasks already in that validated status.
 
 Use [Operating the workflow](./operating-workflow.md) for gates, approvals, handoffs, and task ownership.

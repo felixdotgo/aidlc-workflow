@@ -41,7 +41,7 @@ Evidence kinds are `approval`, `spec`, `test`, `lint`, `review`, and `diagnostic
 
 Gate presentation is executable, not model-authored. After a passing gate check, run `node .agents/aidlc/scripts/gate-view.mjs <task-id>` and relay its output verbatim. The default Markdown uses a portable `[!IMPORTANT]` blockquote with explicit task state, artifact links, decision/execution counts, evidence, and exactly one `ACTION REQUIRED` line. Use `--format plain` when the tool does not render Markdown and `--format json` for integrations. Renderer-specific color is enhancement only; approval semantics live in canonical state.
 
-G0 and G2 never auto-pass. G1 may auto-pass only when `.agents/config.json` explicitly enables `gates.G1.autoPass.enabled` and the work is low-risk, single-area, has zero decisions, no schema/contract/migration, and a passing gate check. Gate approval and phase transition are atomic; after a non-terminal transition, continue until the next human gate, real blocker, or completion.
+G0 and G2 never auto-pass. G1 may auto-pass only when `.agents/config.json` explicitly enables `gates.G1.autoPass.enabled` and the work is low-risk, single-area, has zero decisions, no schema/contract/migration, and a passing gate check. Gate approval and phase transition are atomic; after a non-terminal transition or item/evidence mutation, continue until the next human gate, real blocker, or completion. Item completion is never a turn-level handoff.
 
 ## Context budget
 

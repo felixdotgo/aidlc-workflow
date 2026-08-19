@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { acquireStateLock, approveAndAdvance, closeTask, handoffTask, listTaskSummaries, loadMemoryRegistry, loadState, loadTask, migrateState, nextAction, option, promoteAgenticMemory, rebuildLessonIndex, recordLesson, recordNoLessons, renderViews, reopenTask, retireAgenticMemory, rootOption, saveState, searchLessons, supersedeTask, transitionTask, withoutOptions } from "./lib/runtime.mjs";
+import { acquireStateLock, approveAndAdvance, checkGate, closeTask, handoffTask, listTaskSummaries, loadMemoryRegistry, loadState, loadTask, migrateState, nextAction, option, promoteAgenticMemory, rebuildLessonIndex, recordLesson, recordNoLessons, renderViews, reopenTask, retireAgenticMemory, rootOption, saveState, searchLessons, supersedeTask, transitionTask, withoutOptions } from "./lib/runtime.mjs";
 
 const raw = process.argv.slice(2);
 const root = rootOption(raw);
@@ -29,6 +29,7 @@ const persist = (tasks, rebuildLessons = false) => {
   if (rebuildLessons || archived.length) rebuildLessonIndex(root, state);
   renderViews(root, state, tasks.filter(Boolean));
 };
+const respond = (task, result = {}) => console.log(JSON.stringify({ task, ...result, nextAction: nextAction(task) }, null, 2));
 
 if (group === "state" && action === "migrate") {
   console.log(JSON.stringify(migrateState(root, state), null, 2));
@@ -56,11 +57,11 @@ if (group === "state" && action === "migrate") {
     artifacts: { intent: `.agents/data/tasks/${id}/intent.md`, design: `.agents/data/tasks/${id}/design.md`, workplan: `.agents/data/tasks/${id}/workplan.md` },
     decisions: [], tasks: [], evidence: [], createdAt: recordedAt, updatedAt: recordedAt
   };
-  persist([task]); console.log(JSON.stringify(task, null, 2));
+  persist([task]); respond(task);
 } else if (group === "task" && action === "transition") {
-  const task = transitionTask(state, id, option(raw, "--to")); persist([task]); console.log(JSON.stringify(task, null, 2));
+  const task = transitionTask(state, id, option(raw, "--to")); persist([task]); respond(task);
 } else if (group === "task" && action === "archive") {
-  const task = transitionTask(state, id, "done"); persist([task], true); console.log(JSON.stringify(task, null, 2));
+  const task = transitionTask(state, id, "done"); persist([task], true); respond(task);
 } else if (group === "task" && action === "handoff") {
   const task = handoffTask(state, id, option(raw, "--kind"), option(raw, "--reason"), option(raw, "--source"));
   persist([task]); console.log(JSON.stringify({ task, nextAction: nextAction(task) }, null, 2));
@@ -76,35 +77,39 @@ if (group === "state" && action === "migrate") {
 } else if (group === "task" && action === "status") {
   const task = state.tasks[id]; const status = option(raw, "--status");
   if (!task || !["active", "blocked_on_user", "paused", "done"].includes(status)) throw new Error("task status requires active task id and valid --status");
-  task.status = status; task.updatedAt = now(); persist([task]);
+  if (status === "blocked_on_user") {
+    const errors = checkGate(root, state, id, task.gate).filter((item) => item.level === "ERROR");
+    if (errors.length) throw new Error(`Gate is not ready: ${errors.map((item) => `${item.code}: ${item.message}`).join("; ")}`);
+  }
+  task.status = status; task.updatedAt = now(); persist([task]); respond(task);
 } else if (group === "task" && action === "item") {
   const itemId = args[3]; const task = state.tasks[id]; const status = option(raw, "--status");
   if (!task || !itemId || !["todo", "in_progress", "done", "deferred"].includes(status)) throw new Error("task item requires active task id, item id, and valid --status");
   const item = task.tasks.find((entry) => entry.id === itemId);
   if (item) { item.status = status; if (option(raw, "--label")) item.label = option(raw, "--label"); }
   else task.tasks.push({ id: itemId, label: option(raw, "--label") ?? itemId, status });
-  task.updatedAt = now(); persist([task]);
+  task.updatedAt = now(); persist([task]); respond(task);
 } else if (group === "decision" && action === "set") {
   const decisionId = args[3]; const task = state.tasks[id]; const status = option(raw, "--status");
   if (!task || !decisionId || !["unresolved", "approved", "changed", "dropped"].includes(status)) throw new Error("decision set requires active task id, decision id, and valid --status");
   const current = task.decisions.find((entry) => entry.id === decisionId);
   if (current) { current.status = status; current.resolution = option(raw, "--resolution"); }
   else task.decisions.push({ id: decisionId, label: option(raw, "--label") ?? decisionId, status, resolution: option(raw, "--resolution") });
-  task.updatedAt = now(); persist([task]);
+  task.updatedAt = now(); persist([task]); respond(task);
 } else if (group === "evidence" && action === "add") {
   const task = state.tasks[id]; const kind = option(raw, "--kind"); const result = option(raw, "--result");
   if (!task || !["approval", "spec", "test", "lint", "review", "diagnostic"].includes(kind) || !["pass", "fail", "skip"].includes(result)) throw new Error("evidence add requires active task id, valid --kind, and valid --result");
   task.evidence.push({ kind, gate: option(raw, "--gate"), area: option(raw, "--area"), result, source: option(raw, "--source") ?? "local Node.js script", detail: option(raw, "--detail"), recordedAt: now() });
-  task.updatedAt = now(); persist([task]);
+  task.updatedAt = now(); persist([task]); respond(task);
 } else if (group === "lesson" && action === "record") {
   const lessonId = args[3]; const task = state.tasks[id];
   if (!task || !lessonId) throw new Error("lesson record requires active task id and lesson id");
   const source = option(raw, "--source");
   const lesson = recordLesson(task, { id: lessonId, areas: (option(raw, "--area") ?? task.areas.join(",")).split(",").map((item) => item.trim()).filter(Boolean), summary: option(raw, "--summary"), prevention: option(raw, "--prevention"), example: option(raw, "--example"), promotion: option(raw, "--promotion") ?? "not promoted", source });
-  persist([task], true); console.log(JSON.stringify(lesson, null, 2));
+  persist([task], true); respond(task, { lesson });
 } else if (group === "lesson" && action === "none") {
   const task = state.tasks[id]; if (!task) throw new Error("lesson none requires active task id");
-  recordNoLessons(task, option(raw, "--reason"), option(raw, "--source")); persist([task], true); console.log(JSON.stringify(task.lessonDisposition, null, 2));
+  recordNoLessons(task, option(raw, "--reason"), option(raw, "--source")); persist([task], true); respond(task, { lessonDisposition: task.lessonDisposition });
 } else if (group === "lesson" && action === "rebuild") {
   console.log(JSON.stringify(rebuildLessonIndex(root, state), null, 2));
 } else if (group === "lesson" && action === "search") {

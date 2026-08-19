@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { approveAndAdvance, checkGate } from "../../src/gate.js";
+import { approveAndAdvance, checkGate, gateView } from "../../src/gate.js";
 import type { TaskState, WorkflowState } from "../../src/model.js";
 import { acquireStateLock, closeTask, handoffTask, nextAction, recordNoLessons, reopenTask, renderWorkplan, stateLockPath, supersedeTask, transitionTask, validateState } from "../../src/state.js";
 
@@ -44,6 +44,7 @@ test("rendered workplans are deterministic and gate checks require artifacts/evi
       writeFileSync(join(root, path!), "artifact\n");
     }
     const state: WorkflowState = { schemaVersion: 1, tasks: { [current.id]: current } };
+    assert.throws(() => gateView(current, checkGate(root, state, current.id, "G2_codereview")), /blocked_on_user/);
     assert.match(renderWorkplan(current), /D1 — Shape/);
     assert.ok(checkGate(root, state, current.id, "G2_codereview").some((item) => item.code === "VERIFY_EVIDENCE"));
     current.evidence.push({ kind: "test", source: "test", result: "pass", recordedAt: new Date().toISOString() });
@@ -104,6 +105,30 @@ test("atomic gate approval is idempotent and exposes the next action", () => {
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test("build nextAction routes deterministically through every actionable item", () => {
+  const current = task();
+  current.phase = "build"; current.gate = "G2_codereview"; current.decisions[0].status = "approved";
+  current.tasks = [
+    { id: "T1", label: "First", status: "done" },
+    { id: "T2", label: "Second", status: "todo" },
+    { id: "T3", label: "Third", status: "in_progress" }
+  ];
+  const inProgress = nextAction(current);
+  assert.equal(inProgress.classification, "run_phase");
+  assert.equal(inProgress.itemId, "T3"); assert.equal(inProgress.remainingItems, 2);
+  assert.match(inProgress.command ?? "", /--item T3$/);
+
+  current.tasks[2].status = "done";
+  const todo = nextAction(current);
+  assert.equal(todo.itemId, "T2"); assert.equal(todo.remainingItems, 1);
+  assert.match(todo.reason, /1 actionable item/);
+
+  current.tasks[1].status = "deferred";
+  const verify = nextAction(current);
+  assert.equal(verify.classification, "run_phase"); assert.equal(verify.itemId, undefined); assert.equal(verify.remainingItems, 0);
+  assert.match(verify.reason, /verification, adversarial review, and G2/);
+});
+
 test("state lock serializes local writers and only reclaims a stale dead owner", () => {
   const root = mkdtempSync(join(tmpdir(), "aidlc-state-lock-"));
   try {
@@ -139,8 +164,8 @@ test("durable handoff blocks invalid G2 approval guidance and close is terminal 
   const current = task(); current.phase = "build"; current.gate = "G2_codereview"; current.decisions[0].status = "approved";
   const state: WorkflowState = { schemaVersion: 2, tasks: { [current.id]: current } };
   current.status = "blocked_on_user";
-  assert.equal(nextAction(current).classification, "blocked");
-  assert.equal(nextAction(current).actions?.[0].id, "record_handoff");
+  assert.equal(nextAction(current).classification, "run_phase");
+  assert.equal(nextAction(current).itemId, "T1");
   current.status = "active";
   handoffTask(state, current.id, "release_failed", "Claude release evidence failed", "user", "2026-01-01T00:00:01.000Z");
   const blocked = nextAction(current);
