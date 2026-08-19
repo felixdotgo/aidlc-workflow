@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 import { stdin, stdout } from "node:process";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { installableAdapters } from "./adapters.js";
 import { applyPlan, detectedAgents, doctor, formatPlan, planInit, planUninstall, selectAgents, status } from "./installer.js";
 import type { AgentId, InitOptions } from "./model.js";
 import { loadProjectConfig, resolveProfiles } from "./profiles.js";
 import { applyUpgrade, planUpgrade } from "./upgrade.js";
 import { packageVersion } from "./workflow.js";
+import { applyMcpSetup, planMcpSetup, type McpSetupOptions } from "./mcp-setup.js";
 
 const usage = `Usage:
   npx @felixdotgo/aidlc-workflow init [path] [--agent <name[,name]> | --all] [--yes] [--dry-run] [--force]
@@ -13,7 +16,8 @@ const usage = `Usage:
   npx @felixdotgo/aidlc-workflow uninstall [path] [--yes] [--dry-run]
   npx @felixdotgo/aidlc-workflow status [path]
   npx @felixdotgo/aidlc-workflow doctor [path] [--strict]
-  npx @felixdotgo/aidlc-workflow profile validate [path]`;
+  npx @felixdotgo/aidlc-workflow profile validate [path]
+  npx @felixdotgo/aidlc-workflow mcp setup [path] [--dry-run] [--yes] [--storage sqlite|postgres] [--deployment docker|remote] [--bind localhost|network] [--workspace <id>] [--poll-ms <n>] [--enable]`;
 
 const interactive = (): boolean => Boolean(stdin.isTTY && stdout.isTTY);
 const prompts = async () => import("@inquirer/prompts");
@@ -24,7 +28,7 @@ const value = (args: string[], name: string): string | undefined => {
 };
 
 const flags = (args: string[]): Set<string> => new Set(args.filter((item) => item.startsWith("--")));
-const valueFlags = new Set(["--agent"]);
+const valueFlags = new Set(["--agent", "--storage", "--deployment", "--bind", "--workspace", "--poll-ms", "--token-env", "--providers"]);
 const positional = (args: string[]): string[] => {
   const result: string[] = [];
   for (let index = 0; index < args.length; index += 1) {
@@ -76,6 +80,29 @@ const confirmGeneral = async (options: InitOptions, operation: string): Promise<
   return confirm({ message: `${operation} this plan?`, default: false });
 };
 
+const mcpSetupOptions = async (args: string[]): Promise<McpSetupOptions> => {
+  const selected = {
+    deployment: value(args, "--deployment") as McpSetupOptions["deployment"] | undefined,
+    storage: value(args, "--storage") as McpSetupOptions["storage"] | undefined,
+    bind: value(args, "--bind") as McpSetupOptions["bind"] | undefined,
+    workspace: value(args, "--workspace"),
+    pollMs: Number(value(args, "--poll-ms") ?? 30_000),
+    tokenEnv: value(args, "--token-env") ?? "AIDLC_MCP_TOKEN",
+    providers: (value(args, "--providers") ?? "").split(",").filter(Boolean)
+  };
+  if ((!selected.deployment || !selected.storage || !selected.bind || !selected.workspace) && !interactive()) throw new Error("mcp setup outside a TTY requires --deployment, --storage, --bind and --workspace");
+  if (interactive()) {
+    const { input, select, checkbox } = await prompts();
+    selected.deployment ??= await select({ message: "State service deployment", choices: [{ name: "Docker on this machine", value: "docker" }, { name: "Remote service (configure endpoint later)", value: "remote" }] }) as McpSetupOptions["deployment"];
+    selected.storage ??= await select({ message: "Database", choices: [{ name: "SQLite (local Docker volume)", value: "sqlite" }, { name: "PostgreSQL (multi-host production)", value: "postgres" }] }) as McpSetupOptions["storage"];
+    selected.bind ??= await select({ message: "Network binding", choices: [{ name: "localhost only", value: "localhost" }, { name: "network (requires token/TLS)", value: "network" }] }) as McpSetupOptions["bind"];
+    selected.workspace ??= await input({ message: "Workspace ID", default: "default", required: true });
+    if (!selected.providers.length) selected.providers = await checkbox({ message: "Project-management connectors to configure", choices: ["jira", "trello", "github-issues"].map((value) => ({ name: value, value })) });
+  }
+  if (!Number.isInteger(selected.pollMs) || selected.pollMs < 1_000 || selected.pollMs > 3_600_000) throw new Error("--poll-ms must be an integer from 1000 to 3600000");
+  return { root: rootArg(args), template: join(fileURLToPath(new URL("../services/mcp-state", import.meta.url))), dryRun: flags(args).has("--dry-run"), deployment: selected.deployment!, storage: selected.storage!, bind: selected.bind!, workspace: selected.workspace!, pollMs: selected.pollMs, tokenEnv: selected.tokenEnv, providers: selected.providers, enable: flags(args).has("--enable") };
+};
+
 const main = async (): Promise<void> => {
   const [command = "help", ...args] = process.argv.slice(2);
   if (command === "help" || command === "--help") return void console.log(usage);
@@ -112,6 +139,13 @@ const main = async (): Promise<void> => {
     const { input } = await prompts();
     if ((await input({ message: `Type ${expected} to apply this user-initiated upgrade` })).trim() !== expected) throw new Error("Upgrade confirmation did not match the target version");
     const result = applyUpgrade(root, plan); console.log(`Upgrade complete. Backup: ${result.backup}; changed: ${result.changed}`); return;
+  }
+  if (command === "mcp" && args[0] === "setup") {
+    const options = await mcpSetupOptions(args.slice(1)); const plan = planMcpSetup(options);
+    console.log(`◆ MCP SETUP preview — ${options.dryRun ? "no files will be written" : "review before applying"}`); console.log(JSON.stringify(plan, null, 2));
+    if (options.dryRun) return;
+    if (!await confirmGeneral({ ...initOptions(args), root: options.root }, "Apply MCP setup")) return;
+    applyMcpSetup(options); console.log(`MCP setup written to ${plan.target}. MCP remains ${options.enable ? "enabled" : "disabled"}; start Docker explicitly with docker compose --env-file .env -f ${join(plan.target, "compose.yaml")} up -d.`); return;
   }
   if (command === "profile" && args[0] === "validate") { const root = rootArg(args.slice(1)); const config = loadProjectConfig(root); const profiles = resolveProfiles(root, config.extends); console.log(`OK: ${profiles.map((item) => item.id).join(" → ")}`); return; }
   throw new Error(`Unknown command: ${command}`);

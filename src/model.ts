@@ -64,6 +64,16 @@ export interface ProjectConfig {
   agentState: Partial<Record<AgentId, StateMutationMode>>;
   gates: { G1: { autoPass: { enabled: boolean } } };
   tracker?: TrackerConfig;
+  mcp: McpConfig;
+}
+
+export interface McpConfig {
+  enabled: boolean;
+  endpoint?: string;
+  workspace?: string;
+  tokenEnv?: string;
+  pollMs?: number;
+  providers?: Array<"jira" | "trello" | "github-issues">;
 }
 
 export interface TrackerConfig {

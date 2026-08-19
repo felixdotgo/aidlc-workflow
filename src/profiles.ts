@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
-import type { AgentId, CommandSpec, Profile, ProjectConfig, RiskLevel, StateMutationMode, TrackerConfig } from "./model.js";
+import type { AgentId, CommandSpec, McpConfig, Profile, ProjectConfig, RiskLevel, StateMutationMode, TrackerConfig } from "./model.js";
 
 const profile = (id: Profile["topology"], markers: string[] = []): Profile => ({
   schemaVersion: 1,
@@ -61,6 +61,18 @@ const tracker = (value: unknown): TrackerConfig | undefined => {
   return { enabled: true, provider: "backlog", spaceUrl: item.spaceUrl.replace(/\/$/, ""), project: item.project, tokenEnv: item.tokenEnv, workflow: item.workflow as TrackerConfig["workflow"], mapping: { ...(statusValues ? { statuses: statusValues } : {}), ...(mapping.gateFieldId === undefined ? {} : { gateFieldId: mapping.gateFieldId as number }) } };
 };
 
+const mcp = (value: unknown): McpConfig => {
+  if (value === undefined) return { enabled: false };
+  const item = object(value, "config.mcp");
+  if (item.enabled === false) return { enabled: false };
+  if (item.enabled !== true || typeof item.endpoint !== "string" || !/^https?:\/\//.test(item.endpoint) || typeof item.workspace !== "string" || !item.workspace.trim()) throw new Error("config.mcp.enabled requires endpoint and workspace");
+  if (item.tokenEnv !== undefined && (typeof item.tokenEnv !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(item.tokenEnv))) throw new Error("config.mcp.tokenEnv is invalid");
+  if (item.pollMs !== undefined && (!Number.isInteger(item.pollMs) || Number(item.pollMs) < 1_000 || Number(item.pollMs) > 3_600_000)) throw new Error("config.mcp.pollMs must be an integer from 1000 to 3600000");
+  const providers = item.providers === undefined ? undefined : strings(item.providers, "config.mcp.providers");
+  if (providers?.some((provider) => !["jira", "trello", "github-issues"].includes(provider))) throw new Error("config.mcp.providers is invalid");
+  return { enabled: true, endpoint: item.endpoint, workspace: item.workspace, ...(item.tokenEnv === undefined ? {} : { tokenEnv: item.tokenEnv }), ...(item.pollMs === undefined ? {} : { pollMs: Number(item.pollMs) }), ...(providers === undefined ? {} : { providers: providers as McpConfig["providers"] }) };
+};
+
 export const validateProfile = (value: unknown, label = "profile"): Profile => {
   const item = object(value, label);
   if (item.schemaVersion !== 1 || typeof item.id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/.test(item.id) || typeof item.topology !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/.test(item.topology)) throw new Error(`${label} has an unsupported schema, id, or topology`);
@@ -91,7 +103,8 @@ export const defaultConfig = (): ProjectConfig => ({
   risk: { default: "normal" },
   context: { maxChars: 16_000 },
   agentState: {},
-  gates: { G1: { autoPass: { enabled: false } } }
+  gates: { G1: { autoPass: { enabled: false } } },
+  mcp: { enabled: false }
 });
 
 export const loadProjectConfig = (root: string): ProjectConfig => {
@@ -120,7 +133,8 @@ export const loadProjectConfig = (root: string): ProjectConfig => {
     context: { maxChars },
     agentState,
     gates: { G1: { autoPass: { enabled: Boolean(object(object(object(item.gates ?? {}, "config.gates").G1 ?? {}, "config.gates.G1").autoPass ?? {}, "config.gates.G1.autoPass").enabled ?? false) } } },
-    tracker: tracker(item.tracker)
+    tracker: tracker(item.tracker),
+    mcp: mcp(item.mcp)
   };
 };
 
@@ -160,7 +174,8 @@ export const resolveEffectiveConfig = (root: string, config: ProjectConfig) => {
     rules: { include: stable([...profiles.flatMap((item) => item.rules?.include ?? []), ...config.rules.include]) },
     risk: config.risk,
     context: config.context,
-    gates: config.gates
+    gates: config.gates,
+    mcp: config.mcp
   };
 };
 

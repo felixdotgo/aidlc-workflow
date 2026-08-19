@@ -27,6 +27,7 @@
   "files": [
     "dist/src",
     "dist/assets",
+    "dist/services",
     "README.md",
     "DEVELOPMENT.md",
     "docs",

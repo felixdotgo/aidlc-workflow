@@ -72,7 +72,7 @@ const profileAlias = (id) => builtInProfiles[id] ? id : builtInProfiles[`topolog
 const loadConfig = (root) => {
   const path = join(resolve(root), ".agents/config.json");
   const item = existsSync(path) ? object(JSON.parse(readFileSync(path, "utf8")), ".agents/config.json") : {};
-  if (item.schemaVersion !== undefined && ![1, 2].includes(item.schemaVersion)) throw new Error("Unsupported project config schema");
+  if (item.schemaVersion !== undefined && ![1, 2, 3].includes(item.schemaVersion)) throw new Error("Unsupported project config schema");
   const risk = object(item.risk ?? {}, "config.risk");
   const context = object(item.context ?? {}, "config.context");
   const riskDefault = String(risk.default ?? "normal");
@@ -84,7 +84,8 @@ const loadConfig = (root) => {
     specs: { roots: strings(object(item.specs ?? {}, "config.specs").roots ?? [], "config.specs.roots").map((entry) => safeRelative(entry, "config.specs.roots")) },
     commands: commands(item.commands, "config.commands"),
     rules: { include: strings(object(item.rules ?? {}, "config.rules").include ?? [], "config.rules.include").map((entry) => safeRelative(entry, "config.rules.include")) },
-    risk: { default: riskDefault }, context: { maxChars }, gates: { G1: { autoPass: { enabled: Boolean(item.gates?.G1?.autoPass?.enabled ?? false) } } }
+    risk: { default: riskDefault }, context: { maxChars }, gates: { G1: { autoPass: { enabled: Boolean(item.gates?.G1?.autoPass?.enabled ?? false) } } },
+    mcp: item.mcp?.enabled === true ? { enabled: true, endpoint: typeof item.mcp.endpoint === "string" ? item.mcp.endpoint : undefined, workspace: typeof item.mcp.workspace === "string" ? item.mcp.workspace : undefined, tokenEnv: typeof item.mcp.tokenEnv === "string" ? item.mcp.tokenEnv : undefined, pollMs: Number.isInteger(item.mcp.pollMs) ? item.mcp.pollMs : undefined, providers: Array.isArray(item.mcp.providers) ? item.mcp.providers.filter((provider) => ["jira", "trello", "github-issues"].includes(provider)) : [] } : { enabled: false }
   };
 };
 
@@ -119,7 +120,7 @@ const resolveProfiles = (root, ids) => {
 const stable = (values) => [...new Set(values)];
 const resolveEffectiveConfig = (root, config) => {
   const profiles = resolveProfiles(root, config.extends);
-  return { profiles, discovery: { roots: stable(profiles.flatMap((item) => item.discovery?.roots ?? ["."])), workspaceMarkers: stable(profiles.flatMap((item) => item.discovery?.workspaceMarkers ?? [])) }, specs: { roots: stable([...profiles.flatMap((item) => item.specs?.roots ?? []), ...config.specs.roots]) }, commands: Object.assign({}, ...profiles.map((item) => item.commands ?? {}), config.commands), rules: { include: stable([...profiles.flatMap((item) => item.rules?.include ?? []), ...config.rules.include]) }, risk: config.risk, context: config.context, gates: config.gates };
+  return { profiles, discovery: { roots: stable(profiles.flatMap((item) => item.discovery?.roots ?? ["."])), workspaceMarkers: stable(profiles.flatMap((item) => item.discovery?.workspaceMarkers ?? [])) }, specs: { roots: stable([...profiles.flatMap((item) => item.specs?.roots ?? []), ...config.specs.roots]) }, commands: Object.assign({}, ...profiles.map((item) => item.commands ?? {}), config.commands), rules: { include: stable([...profiles.flatMap((item) => item.rules?.include ?? []), ...config.rules.include]) }, risk: config.risk, context: config.context, gates: config.gates, mcp: config.mcp };
 };
 
 const includedRuleFiles = (root, patterns) => {
