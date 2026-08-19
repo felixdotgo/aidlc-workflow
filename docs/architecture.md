@@ -52,7 +52,7 @@ The state machine enforces the lifecycle; gates require explicit human approval;
 - Workflow assets are local package assets. The manifest records `remoteUpdates: false`; status and doctor do not consult a registry.
 - Install/upgrade plans are conflict-first, path-contained, and reject unsafe symlink traversal.
 - Human-only upgrade is an intentional boundary: interactive confirmation is required and agents must not run or discover upgrades.
-- Only Codex and Claude Code adapters are installed. Codex uses trusted project-scoped `.codex/config.toml`; Claude Code scopes lifecycle-script permission to its phase skills.
+- Only Codex and Claude Code adapters are installed. Codex uses trusted project-scoped `.codex/config.toml` and `.codex/rules/aidlc.rules`; Claude Code scopes lifecycle-script permission through its local settings and phase skills.
 - Project commands are configured as executable-and-argument arrays rather than opaque shell strings.
 
 ## Change impact guide

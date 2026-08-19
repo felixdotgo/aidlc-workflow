@@ -26,7 +26,7 @@ Use the adapter that matches the coding tool:
 | Codex | `codex` | `AGENTS.md` |
 | Claude Code | `claude` | `CLAUDE.md` and phase skills |
 
-Use `--all` to install both supported adapters. Codex installs `.codex/config.toml` with workspace-write sandboxing and no approval prompts; trust the project before starting Codex so that it loads the project configuration. Claude Code phase skills allow the lifecycle-script command prefix without granting general Bash access. Use `--force --yes` only for an initial installation when replacing an unmanaged conflicting file is intentional.
+Use `--all` to install both supported adapters. Codex installs workspace-write sandboxing with on-request approvals and a project execpolicy that permits only AI-DLC lifecycle scripts; trust the project before starting Codex so that it loads the project configuration. Claude Code installs a local permission allowlist for the same lifecycle-script command prefix without granting general Bash access. Use `--force --yes` only for an initial installation when replacing an unmanaged conflicting file is intentional.
 
 Confirm the installed project locally:
 

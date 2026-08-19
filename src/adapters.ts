@@ -24,6 +24,21 @@ const claudeSkill = (phase: string, gate: string) => [
   "Workflow install/upgrade operations are human-only. Never query npm for a newer workflow or run npm/npx to install, detect, preview, or upgrade it. Project-configured build, test, and lint commands remain allowed.", ""
 ].join("\n");
 
+const claudeLocalSettings = JSON.stringify({
+  permissions: { allow: ["Bash(node .agents/aidlc/scripts/*)"] }
+}, null, 2) + "\n";
+
+const codexExecPolicy = [
+  "# Permit only AI-DLC lifecycle scripts without an approval prompt.",
+  "prefix_rule(pattern = [\"node\", \".agents/aidlc/scripts/context.mjs\"], decision = \"allow\")",
+  "prefix_rule(pattern = [\"node\", \".agents/aidlc/scripts/gate-check.mjs\"], decision = \"allow\")",
+  "prefix_rule(pattern = [\"node\", \".agents/aidlc/scripts/gate-view.mjs\"], decision = \"allow\")",
+  "prefix_rule(pattern = [\"node\", \".agents/aidlc/scripts/render.mjs\"], decision = \"allow\")",
+  "prefix_rule(pattern = [\"node\", \".agents/aidlc/scripts/state.mjs\"], decision = \"allow\")",
+  "prefix_rule(pattern = [\"node\", \".agents/aidlc/scripts/task-next.mjs\"], decision = \"allow\")",
+  ""
+].join("\n");
+
 export const adapters: readonly Adapter[] = [
   {
     id: "claude",
@@ -31,6 +46,7 @@ export const adapters: readonly Adapter[] = [
     detect: (root) => existsSync(join(root, "CLAUDE.md")) || existsSync(join(root, ".claude")),
     files: () => [
       { ...adapterFile("claude", "CLAUDE.md", instruction("Claude Code", "claude")), strategy: "managed-block" },
+      { path: ".claude/settings.local.json", owner: "claude", content: claudeLocalSettings },
       ...(["clarify:G0", "plan:G1", "build:G2", "wrap:none", "index:none"] as const).map((entry) => {
         const [phase, gate] = entry.split(":");
         return adapterFile("claude", `.claude/skills/aidlc-${phase}/SKILL.md`, claudeSkill(phase, gate));
@@ -43,7 +59,8 @@ export const adapters: readonly Adapter[] = [
     detect: (root) => existsSync(join(root, "AGENTS.md")) || existsSync(join(root, ".codex")),
     files: () => [
       { ...adapterFile("codex", "AGENTS.md", instruction("Codex", "codex")), strategy: "managed-block" },
-      { path: ".codex/config.toml", owner: "codex", content: "approval_policy = \"never\"\nsandbox_mode = \"workspace-write\"\n" }
+      { path: ".codex/config.toml", owner: "codex", content: "approval_policy = \"on-request\"\nsandbox_mode = \"workspace-write\"\n" },
+      { path: ".codex/rules/aidlc.rules", owner: "codex", content: codexExecPolicy }
     ]
   }
 ];

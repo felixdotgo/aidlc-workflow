@@ -56,7 +56,7 @@ Keep business/domain rules in `.agents/project/rules/`. Do not edit managed kern
 
 ## Agent permissions
 
-The Codex adapter installs `.codex/config.toml` with `approval_policy = "never"` and `sandbox_mode = "workspace-write"`. Codex loads this project config only after the user trusts the project; network access stays disabled unless the project separately enables it. Claude Code phase skills allow only `node .agents/aidlc/scripts/*`, so lifecycle state updates do not require repeated confirmation while general Bash commands remain unapproved.
+The Codex adapter installs `.codex/config.toml` with `approval_policy = "on-request"` and `sandbox_mode = "workspace-write"`, plus `.codex/rules/aidlc.rules`. The execpolicy allowlists only the six lifecycle entry points under `node .agents/aidlc/scripts/`, allowing AI-DLC state transitions without granting general command approval. Codex loads this project config only after the user trusts the project; network access stays disabled unless the project separately enables it. Claude Code installs `.claude/settings.local.json` and phase skills that allow only `node .agents/aidlc/scripts/*`, so lifecycle state updates do not require repeated confirmation while general Bash commands remain unapproved.
 
 ## Context and risk
 

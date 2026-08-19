@@ -48,7 +48,9 @@ test("installs bundled assets with manifest v2 and separate project/state owners
     assert.ok(manifest?.files[".agents/aidlc/scripts/lib/context-runtime.mjs"]);
     assert.ok(manifest?.files[".agents/aidlc/scripts/gate-view.mjs"]);
     assert.ok(manifest?.files[".codex/config.toml"]);
-    assert.equal(readFileSync(join(root, ".codex/config.toml"), "utf8"), "approval_policy = \"never\"\nsandbox_mode = \"workspace-write\"\n");
+    assert.ok(manifest?.files[".codex/rules/aidlc.rules"]);
+    assert.equal(readFileSync(join(root, ".codex/config.toml"), "utf8"), "approval_policy = \"on-request\"\nsandbox_mode = \"workspace-write\"\n");
+    assert.match(readFileSync(join(root, ".codex/rules/aidlc.rules"), "utf8"), /prefix_rule\(pattern = \["node", "\.agents\/aidlc\/scripts\/state\.mjs"\], decision = "allow"\)/);
     assert.equal(manifest?.files[".agents/data/state/BOARD.md"], undefined);
     assert.equal(existsSync(join(root, ".agents/data/state/BOARD.md")), false);
     assert.match(readFileSync(join(root, ".agents/aidlc/templates/model-contract.md"), "utf8"), /COSTARS/);
@@ -61,6 +63,16 @@ test("installs bundled assets with manifest v2 and separate project/state owners
     assert.equal(JSON.parse(readFileSync(join(root, ".agents/aidlc/schemas/state.schema.json"), "utf8")).properties.schemaVersion.const, 3);
     assert.match(doctor(root), /^OK:/);
     assert.match(status(root), /installed version: 0.0.1/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("installs Claude Code local lifecycle permission settings", () => {
+  const root = makeRoot();
+  try {
+    applyPlan(root, planInit({ ...options(root), agents: ["claude"] }));
+    assert.deepEqual(JSON.parse(readFileSync(join(root, ".claude/settings.local.json"), "utf8")), {
+      permissions: { allow: ["Bash(node .agents/aidlc/scripts/*)"] }
+    });
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -108,7 +120,15 @@ test("init migration fails closed on differing legacy destination", () => {
 test("official adapters carry the human-only upgrade boundary", () => {
   for (const adapter of adapters) for (const file of adapter.files()) {
     if (file.path === ".codex/config.toml") {
-      assert.equal(file.content, "approval_policy = \"never\"\nsandbox_mode = \"workspace-write\"\n");
+      assert.equal(file.content, "approval_policy = \"on-request\"\nsandbox_mode = \"workspace-write\"\n");
+      continue;
+    }
+    if (file.path === ".codex/rules/aidlc.rules") {
+      assert.match(file.content, /prefix_rule\(pattern = \["node", "\.agents\/aidlc\/scripts\/state\.mjs"\], decision = "allow"\)/);
+      continue;
+    }
+    if (file.path === ".claude/settings.local.json") {
+      assert.deepEqual(JSON.parse(file.content), { permissions: { allow: ["Bash(node .agents/aidlc/scripts/*)"] } });
       continue;
     }
     assert.match(file.content, /Never query npm/);
