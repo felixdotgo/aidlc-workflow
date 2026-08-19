@@ -8,6 +8,7 @@ services:
     environment:
       MCP_STATE_DATABASE: sqlite
       MCP_STATE_SQLITE_PATH: /data/mcp-state.db
+      MCP_STATE_AUTH_TOKEN: ${MCP_STATE_AUTH_TOKEN:?set MCP_STATE_AUTH_TOKEN in .env before starting the service}
 
   postgres:
     image: postgres:16-alpine

@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import pg from "pg";
+import { transitionTask, validateState } from "./lifecycle-core.mjs";
 
 const emptyState = () => ({ schemaVersion: 3, tasks: {}, archive: {} });
 const emptyIndex = (revision) => ({ schemaVersion: 1, sourceRevision: revision, taskIds: [], updatedAt: new Date().toISOString() });
@@ -17,17 +18,23 @@ const applyCommand = (current, command) => {
   let index = structuredClone(current.index);
   if (command.type === "replaceState") {
     if (!command.state || typeof command.state !== "object" || Array.isArray(command.state)) throw new Error("replaceState requires an object state");
-    return { state: structuredClone(command.state), index };
+    const next = { state: structuredClone(command.state), index }; validateState(next.state); return next;
   }
   if (command.type === "upsertTask") {
     if (typeof command.taskId !== "string" || !command.taskId || !command.task || typeof command.task !== "object" || Array.isArray(command.task)) throw new Error("upsertTask requires taskId and task");
     state.tasks ??= {}; state.tasks[command.taskId] = structuredClone(command.task);
     index = { ...index, taskIds: Object.keys(state.tasks).sort() };
-    return { state, index };
+    validateState(state); return { state, index };
   }
   if (command.type === "removeTask") {
     if (typeof command.taskId !== "string" || !command.taskId) throw new Error("removeTask requires taskId");
     delete state.tasks?.[command.taskId];
+    index = { ...index, taskIds: Object.keys(state.tasks ?? {}).sort() };
+    validateState(state); return { state, index };
+  }
+  if (command.type === "transition") {
+    if (typeof command.taskId !== "string" || typeof command.target !== "string") throw new Error("transition requires taskId and target");
+    transitionTask(state, command.taskId, command.target); validateState(state);
     index = { ...index, taskIds: Object.keys(state.tasks ?? {}).sort() };
     return { state, index };
   }
