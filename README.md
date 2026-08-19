@@ -46,6 +46,7 @@ The detailed documentation is organised by task and audience:
 - [Development](./docs/development.md) — local contributor setup, source layout, and implementation rules.
 - [Testing and release](./docs/testing-and-release.md) — verification, evaluator, package smoke test, and release readiness.
 - [Architecture](./docs/architecture.md) — package boundaries and the source-to-installed flow.
+- [MCP state service](./docs/mcp-state.md) — opt-in Docker/remote state, security, and polling contract.
 
 ## Safety note
 

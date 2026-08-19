@@ -63,3 +63,7 @@ The Codex adapter installs `.codex/config.toml` with `approval_policy = "on-requ
 `context.maxChars` bounds a phase packet. The runtime preserves lifecycle instructions, approved decisions, and mandatory invariants; it fails clearly rather than silently truncating required contract content.
 
 Set the default risk level deliberately. Planning, migrations, cross-service contracts, and security-sensitive changes deserve a stronger reviewer or an explicit human decision even when the configuration default is normal.
+
+## Optional MCP state
+
+`mcp` is absent (or `{ "enabled": false }`) by default. An enabled configuration requires an HTTP(S) `endpoint` and non-empty `workspace`; it may also name a token environment variable, polling interval from 1,000 to 3,600,000 ms, and the enabled Jira/Trello/GitHub Issues preflight providers. See [MCP state service](./mcp-state.md) for the remote-authority and deployment contract.
