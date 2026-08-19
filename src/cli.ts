@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { installableAdapters } from "./adapters.js";
 import { applyPlan, detectedAgents, doctor, formatPlan, planInit, planUninstall, selectAgents, status } from "./installer.js";
@@ -17,11 +16,7 @@ const usage = `Usage:
   npx @felixdotgo/aidlc-workflow profile validate [path]`;
 
 const interactive = (): boolean => Boolean(stdin.isTTY && stdout.isTTY);
-
-const question = async (prompt: string): Promise<string> => {
-  const readline = createInterface({ input: stdin, output: stdout });
-  try { return await readline.question(prompt); } finally { readline.close(); }
-};
+const prompts = async () => import("@inquirer/prompts");
 
 const value = (args: string[], name: string): string | undefined => {
   const index = args.indexOf(name);
@@ -55,18 +50,21 @@ const chooseAgents = async (options: InitOptions): Promise<InitOptions> => {
   const detected = detectedAgents(options.root);
   if (detected.length === 1) return { ...options, agents: detected };
   if (!interactive()) throw new Error(`Unable to select an agent automatically. Use --agent <name> or --all. Detected: ${detected.join(", ") || "none"}`);
+  const { checkbox } = await prompts();
   const choices = installableAdapters();
-  console.log("Select one or more agents (comma-separated numbers):");
-  choices.forEach((adapter, index) => console.log(`  ${index + 1}. ${adapter.displayName}${detected.includes(adapter.id) ? " (detected)" : ""}`));
-  const answer = await question("> ");
-  const indexes = answer.split(",").map((entry) => Number(entry.trim())).filter((entry) => Number.isInteger(entry) && entry >= 1 && entry <= choices.length);
-  const agents = [...new Set(indexes.map((index) => choices[index - 1].id))];
-  if (!agents.length) throw new Error("Choose at least one listed agent");
+  const agents = await checkbox({
+    message: "Select one or more agents",
+    choices: choices.map((adapter) => ({
+      name: `${adapter.displayName}${detected.includes(adapter.id) ? " (detected)" : ""}`,
+      value: adapter.id
+    })),
+    required: true
+  });
   return { ...options, agents };
 };
 
 const preview = (operation: string, plan: ReturnType<typeof planInit>): void => {
-  console.log(`=== ${operation} preview — changes have NOT been applied ===`);
+  console.log(`◆ ${operation} preview — changes have NOT been applied`);
   console.log(formatPlan(plan));
 };
 
@@ -74,7 +72,8 @@ const confirmGeneral = async (options: InitOptions, operation: string): Promise<
   if (options.dryRun) return false;
   if (options.yes) return true;
   if (!interactive()) return false;
-  return /^(y|yes)$/i.test((await question(`${operation} this plan? [y/N] `)).trim());
+  const { confirm } = await prompts();
+  return confirm({ message: `${operation} this plan?`, default: false });
 };
 
 const main = async (): Promise<void> => {
@@ -110,7 +109,8 @@ const main = async (): Promise<void> => {
     if (flags(args).has("--dry-run")) return;
     if (!interactive()) throw new Error("Upgrade apply requires an interactive TTY. AI and non-interactive processes must not apply upgrades.");
     const expected = packageVersion();
-    if ((await question(`Type ${expected} to apply this user-initiated upgrade: `)).trim() !== expected) throw new Error("Upgrade confirmation did not match the target version");
+    const { input } = await prompts();
+    if ((await input({ message: `Type ${expected} to apply this user-initiated upgrade` })).trim() !== expected) throw new Error("Upgrade confirmation did not match the target version");
     const result = applyUpgrade(root, plan); console.log(`Upgrade complete. Backup: ${result.backup}; changed: ${result.changed}`); return;
   }
   if (command === "profile" && args[0] === "validate") { const root = rootArg(args.slice(1)); const config = loadProjectConfig(root); const profiles = resolveProfiles(root, config.extends); console.log(`OK: ${profiles.map((item) => item.id).join(" → ")}`); return; }
