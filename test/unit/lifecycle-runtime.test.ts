@@ -8,7 +8,7 @@ import { applyPlan, planInit, readManifest } from "../../src/installer.js";
 import type { InitOptions } from "../../src/model.js";
 
 const options = (root: string): InitOptions => ({ root, agents: ["codex"], all: false, dryRun: false, yes: true, force: false });
-const run = (root: string, script: string, args: string[]): string => execFileSync(process.execPath, [join(root, ".agents/aidlc/scripts", script), ...args], { cwd: root, encoding: "utf8" });
+const run = (root: string, script: string, args: string[], cwd = root): string => execFileSync(process.execPath, [join(root, ".agents/aidlc/scripts", script), ...args], { cwd, encoding: "utf8" });
 const runAsync = (root: string, script: string, args: string[]): Promise<void> => new Promise((resolveRun, rejectRun) => {
   const child = spawn(process.execPath, [join(root, ".agents/aidlc/scripts", script), ...args], { cwd: root });
   let stderr = "";
@@ -27,6 +27,63 @@ test("installed lifecycle scripts preserve every concurrent local mutation", asy
     assert.equal(catalog.total, ids.length);
     for (const id of ids) assert.equal(JSON.parse(run(root, "state.mjs", ["task", "show", id])).id, id);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("installed lifecycle CLI parses strictly and resolves one canonical project root", () => {
+  const root = mkdtempSync(join(tmpdir(), "aidlc-runtime-argv-"));
+  const outside = mkdtempSync(join(tmpdir(), "aidlc-runtime-outside-"));
+  try {
+    applyPlan(root, planInit(options(root)));
+    const id = "2026-strict-argv";
+    run(root, "state.mjs", ["--title=Strict argv", "--area=root", "task", "create", id]);
+    const taskDir = join(root, ".agents/data/tasks", id);
+    mkdirSync(taskDir, { recursive: true });
+    writeFileSync(join(taskDir, "intent.md"), "# Intent\n\n## 📋 Problem\nx\n## 🗺️ Affected areas\nx\n## 💭 Assumptions\nx\n## ❓ Open questions\nnone\n## 🎯 Scope\nx\n");
+
+    assert.match(run(root, "gate-check.mjs", ["--gate=G0_confirm", id]), /GATE_OK/);
+    run(root, "state.mjs", ["task", "status", id, "--status=blocked_on_user"]);
+    assert.equal(JSON.parse(run(root, "gate-view.mjs", ["--format=json", id])).gate, "G0_confirm");
+    assert.match(run(root, "context.mjs", ["--format=json", id]), /Strict argv/);
+    run(root, "render.mjs", ["--all"]);
+    assert.equal(existsSync(join(root, ".agents/data/state/.aidlc-state.lock")), false);
+
+    run(root, "state.mjs", ["gate", "approve", id, "--gate=G0_confirm", "--source=human"]);
+    run(root, "state.mjs", ["decision", "set", id, "D1", "--status=approved", "--resolution=keep me"]);
+    run(root, "state.mjs", ["decision", "set", id, "D1", "--status", "approved"]);
+    assert.equal(JSON.parse(run(root, "state.mjs", ["task", "show", id])).decisions[0].resolution, "keep me");
+    run(root, "state.mjs", ["task", "item", id, "--status=todo", "item-one"]);
+    run(root, "state.mjs", ["task", "item", id, "--status=done", "item-one"]);
+    const parsedTask = JSON.parse(run(root, "state.mjs", ["task", "show", id]));
+    assert.equal(parsedTask.tasks[0].id, "item-one");
+    assert.equal(parsedTask.tasks[0].status, "done");
+
+    const statePath = join(root, ".agents/data/state/aidlc-state.json");
+    const before = readFileSync(statePath, "utf8");
+    for (const args of [
+      ["task", "create", "bad-unknown", "--title", "x", "--wat"],
+      ["task", "create", "bad-missing", "--title", "--type", "bug"],
+      ["task", "show", id, "surplus"],
+      ["task", "show", id, "--status=active", "--status=done"]
+    ]) {
+      const invalid = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), ...args], { cwd: root, encoding: "utf8" });
+      assert.notEqual(invalid.status, 0);
+      assert.equal(readFileSync(statePath, "utf8"), before);
+    }
+
+    const nested = join(root, "packages/example/src");
+    mkdirSync(nested, { recursive: true });
+    const nestedId = "2026-nested-root";
+    run(root, "state.mjs", ["task", "create", nestedId, "--title", "Nested root"], nested);
+    assert.equal(JSON.parse(run(root, "state.mjs", ["task", "show", nestedId])).id, nestedId);
+    assert.equal(existsSync(join(nested, ".agents")), false);
+
+    assert.match(run(root, "task-next.mjs", ["--root", root, id], outside), /run_phase|await_user/);
+    const noMarker = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "task", "create", "bad-root", "--title", "x"], { cwd: outside, encoding: "utf8" });
+    assert.notEqual(noMarker.status, 0); assert.match(noMarker.stderr, /Project root not found/);
+    const invalidRender = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/render.mjs")], { cwd: outside, encoding: "utf8" });
+    assert.notEqual(invalidRender.status, 0); assert.match(invalidRender.stderr, /either <task-id> or --all/);
+    assert.equal(existsSync(join(outside, ".agents")), false);
+  } finally { rmSync(root, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true }); }
 });
 
 test("installed local scripts drive the lifecycle without an aidlc executable or BOARD", () => {

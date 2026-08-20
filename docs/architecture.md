@@ -47,6 +47,8 @@ The installed kernel consists of contracts, templates, schemas, profiles, and de
 
 The state machine enforces the lifecycle; gates require explicit human approval; evidence is append-only. Installed scripts remain usable without an `aidlc-workflow` executable or a duplicate board file.
 
+Installed entry points share a strict dependency-free argv parser. Parsing and command-shape validation precede root discovery, lock acquisition, and state reads. Explicit roots are validated project directories; implicit roots use nearest-ancestor `.agents/aidlc/` discovery and never fall back to writing beneath an arbitrary working directory.
+
 ## Trust and safety boundaries
 
 - Workflow assets are local package assets. The manifest records `remoteUpdates: false`; status and doctor do not consult a registry.
@@ -54,6 +56,8 @@ The state machine enforces the lifecycle; gates require explicit human approval;
 - Human-only upgrade is an intentional boundary: interactive confirmation is required and agents must not run or discover upgrades.
 - Only Codex and Claude Code adapters are installed. Codex uses trusted project-scoped `.codex/config.toml` and `.codex/rules/aidlc.rules`; Claude Code scopes lifecycle-script permission through its local settings and phase skills.
 - Project commands are configured as executable-and-argument arrays rather than opaque shell strings.
+- Canonical state, terminal records, and rendered workplans reject symlink traversal and use same-directory atomic replacement. Lock acquisition is guard-serialized, while release verifies the owner token directly so a contended guard cannot strand the owner's main lock.
+- The compact master catalog remains archive authority. Recovery can replace only a valid, unreferenced terminal orphan tied by `id` and `createdAt` to the still-active catalog task; referenced, malformed, and identity-conflicting records fail closed.
 
 ## Change impact guide
 

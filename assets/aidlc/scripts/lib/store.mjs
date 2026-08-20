@@ -127,12 +127,14 @@ export const acquireStateLock = (root, options = {}) => {
       const now = Date.now(); const existing = lockRecord(lockPath);
       if (lockExpired(existing, now, staleMs)) removeOwnedLock(lockPath, existing.token);
       if (tryCreateLock(lockPath, { token, pid: process.pid, createdAt: now })) return () => {
-        const releaseDeadline = Date.now() + timeoutMs;
-        while (Date.now() <= releaseDeadline) {
-          const releaseGuard = acquireGuard();
-          if (!releaseGuard) { sleep(retryMs); continue; }
-          try { removeOwnedLock(lockPath, token); return; } finally { removeOwnedLock(guardPath, releaseGuard); }
+        const existing = lockRecord(lockPath);
+        if (!existing) {
+          if (existsSync(lockPath)) throw new Error("Cannot release AI-DLC state lock because its owner record is unreadable");
+          return;
         }
+        if (existing.token !== token) return;
+        try { unlinkSync(lockPath); }
+        catch (error) { throw new Error(`Failed to release owned AI-DLC state lock: ${error instanceof Error ? error.message : String(error)}`); }
       };
     } finally { removeOwnedLock(guardPath, guardToken); }
     sleep(retryMs);
@@ -187,15 +189,25 @@ export const loadTask = (root, id, state = loadState(root)) => {
 };
 
 export const saveState = (root, state) => {
-  const normalized = validateState(state);
+  const normalized = validateState(structuredClone(state));
+  const persisted = existsSync(statePath(root)) ? loadState(root) : undefined;
   const archived = [];
   if (normalized.schemaVersion === 3) {
     normalized.archive ??= {};
     for (const task of Object.values(normalized.tasks)) if (terminal(task)) {
       const content = taskRecordContent(task); const summary = archivedSummary(task, content); const path = join(resolve(root), summary.record);
       assertNoSymlinkPath(root, summary.record);
-      if (existsSync(path)) { if (digest(readFileSync(path, "utf8")) !== summary.digest) throw new Error(`Archived task record conflicts: ${task.id}`); }
-      else writeAtomic(path, content);
+      if (existsSync(path)) {
+        const current = readFileSync(path, "utf8");
+        if (digest(current) !== summary.digest) {
+          let orphan;
+          try { orphan = JSON.parse(current); validateTask(task.id, orphan); }
+          catch { throw new Error(`Archived task record conflicts: ${task.id}`); }
+          const authority = persisted?.tasks[task.id];
+          if (persisted?.archive?.[task.id] || !authority || authority.createdAt !== task.createdAt || !terminal(orphan) || orphan.id !== task.id || orphan.createdAt !== task.createdAt) throw new Error(`Archived task record conflicts: ${task.id}`);
+          writeAtomic(path, content);
+        }
+      } else writeAtomic(path, content);
       normalized.archive[task.id] = summary; delete normalized.tasks[task.id]; archived.push(task.id);
     }
     validateState(normalized);
@@ -286,7 +298,7 @@ export const searchLessons = (root, state, query, areas = [], limit = 5) => { co
 export const listTaskSummaries = (state, options = {}) => { const active = Object.values(state.tasks).map((task) => ({ id: task.id, title: task.title, phase: task.phase, gate: task.gate, status: task.status, risk: task.risk, areas: task.areas, updatedAt: task.updatedAt, source: "active" })); const archived = options.includeArchive ? Object.values(state.archive ?? {}).map((task) => ({ id: task.id, title: task.title, phase: task.phase, gate: task.gate, status: task.status, risk: task.risk, areas: task.areas, updatedAt: task.updatedAt, source: "archive" })) : []; const queryTokens = tokens(options.query ?? ""); const statusSet = new Set(options.statuses ?? []); const filtered = [...active, ...archived].filter((item) => (!statusSet.size || statusSet.has(item.status)) && (!queryTokens.length || queryTokens.every((token) => tokens(`${item.id} ${item.title} ${item.areas.join(" ")}`).includes(token)))).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id)); const cursor = Math.max(0, options.cursor ?? 0); const limit = Math.max(1, Math.min(options.limit ?? 20, 100)); const items = filtered.slice(cursor, cursor + limit); return { items, nextCursor: cursor + items.length < filtered.length ? String(cursor + items.length) : null, total: filtered.length }; };
 
 export const renderWorkplan = (task) => { const decisions = task.decisions.length ? task.decisions.map((item) => `- [${item.status === "approved" ? "x" : " "}] ${item.id} — ${item.label}${item.resolution ? ` — ${item.resolution}` : ""}`).join("\n") : "- None"; const tasks = task.tasks.length ? task.tasks.map((item) => `- [${item.status === "done" ? "x" : item.status === "in_progress" ? "~" : " "}] ${item.id} — ${item.label}`).join("\n") : "- None"; const lifecycle = [`- Status: \`${task.status}\``, task.handoff ? `- Handoff: \`${task.handoff.kind}\` — ${task.handoff.reason}` : "", task.closure ? `- Closure: ${task.closure.reason}` : "", task.predecessorTaskId ? `- Predecessor: \`${task.predecessorTaskId}\`` : "", task.successorTaskId ? `- Successor: \`${task.successorTaskId}\`` : "", task.lessonDisposition ? `- Lessons: \`${task.lessonDisposition.status}\`` : ""].filter(Boolean).join("\n"); return `# Workplan — ${task.title} (\`${task.id}\`)\n\n> Generated from canonical JSON state.\n\n## Lifecycle\n${lifecycle}\n\n## 🧩 Decisions (Gate G1 — approve before build)\n${decisions}\n\n## 🧩 Tasks (Gate G2 — build execution)\n${tasks}\n`; };
-export const renderViews = (root, state = loadState(root), selected = Object.values(state.tasks)) => { for (const task of selected) { if (!task.artifacts.workplan) continue; const path = join(resolve(root), task.artifacts.workplan); mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, renderWorkplan(task), "utf8"); } };
+export const renderViews = (root, state = loadState(root), selected = Object.values(state.tasks)) => { for (const task of selected) { if (!task.artifacts.workplan) continue; assertNoSymlinkPath(root, task.artifacts.workplan); writeAtomic(join(resolve(root), task.artifacts.workplan), renderWorkplan(task)); } };
 
 const artifactDiagnostics = (root, task, names) => names.flatMap((name) => { const path = task.artifacts[name]; if (!path) return [{ level: "ERROR", code: "ARTIFACT_REFERENCE", message: `${name} artifact is not referenced` }]; return existsSync(join(resolve(root), path)) ? [] : [{ level: "ERROR", code: "ARTIFACT_MISSING", message: `${path} does not exist` }]; });
 export const checkGate = (root, state, taskId, gate) => { const task = state.tasks[taskId]; if (!task) return [{ level: "ERROR", code: "TASK_UNKNOWN", message: `Unknown active task: ${taskId}` }]; const diagnostics = []; if (task.gate !== gate) diagnostics.push({ level: "ERROR", code: "GATE_STATE", message: `Task is at ${task.gate}, not ${gate}` }); if (["closed", "superseded"].includes(task.status)) diagnostics.push({ level: "ERROR", code: "TASK_TERMINAL", message: `Terminal task cannot approve ${gate}` }); if (task.handoff) diagnostics.push({ level: "ERROR", code: "TASK_HANDOFF", message: `Task has unresolved handoff: ${task.handoff.reason}` }); if (task.id !== taskId) diagnostics.push({ level: "ERROR", code: "TASK_ID", message: "Task key and id differ" }); if (!task.title.trim() || !task.areas.length) diagnostics.push({ level: "ERROR", code: "TASK_FIELDS", message: "Task title and affected areas are required" }); if (gate === "G0_confirm") { diagnostics.push(...artifactDiagnostics(root, task, ["intent"])); const path = task.artifacts.intent && join(resolve(root), task.artifacts.intent); if (path && existsSync(path)) for (const heading of ["## 📋 Problem", "## 🗺️ Affected areas", "## 💭 Assumptions", "## ❓ Open questions", "## 🎯 Scope"]) if (!readFileSync(path, "utf8").includes(heading)) diagnostics.push({ level: "ERROR", code: "INTENT_HEADING", message: `Intent is missing ${heading}` }); } if (gate === "G1_review") { diagnostics.push(...artifactDiagnostics(root, task, ["intent", "design", "workplan"])); diagnostics.push(...transitionDiagnostics(task, "build").filter((item) => item.code === "UNRESOLVED_DECISION")); const path = task.artifacts.design && join(resolve(root), task.artifacts.design); if (path && existsSync(path)) for (const heading of ["## 🧩 Solution per affected area", "## 📌 Spec traceability", "## 🔗 Cross-service contracts", "## ⚠️ Risks / edge cases"]) if (!readFileSync(path, "utf8").includes(heading)) diagnostics.push({ level: "ERROR", code: "DESIGN_HEADING", message: `Design is missing ${heading}` }); } if (gate === "G2_codereview") { diagnostics.push(...artifactDiagnostics(root, task, ["intent", "design", "workplan"])); if (task.tasks.some((item) => !["done", "deferred"].includes(item.status))) diagnostics.push({ level: "ERROR", code: "TASKS_OPEN", message: "Build tasks remain open" }); for (const area of task.areas) if (!hasAreaVerification(task, area)) diagnostics.push({ level: "ERROR", code: "VERIFY_EVIDENCE", message: `Latest post-G1 verification evidence must pass for affected area: ${area}` }); if (!hasReview(task)) diagnostics.push({ level: "ERROR", code: "REVIEW_EVIDENCE", message: "Latest post-G1 review evidence must pass" }); } if (!diagnostics.length) diagnostics.push({ level: "INFO", code: "GATE_OK", message: `${gate} checks passed for ${taskId}` }); return diagnostics; };

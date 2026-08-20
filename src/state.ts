@@ -97,13 +97,14 @@ export const acquireStateLock = (root: string, options: StateLockOptions = {}): 
       const existing = lockRecord(lockPath);
       if (lockExpired(existing, now, staleMs)) removeOwnedLock(lockPath, existing!.token);
       if (tryCreateLock(lockPath, { token, pid: process.pid, createdAt: now })) return () => {
-        const releaseDeadline = Date.now() + timeoutMs;
-        while (Date.now() <= releaseDeadline) {
-          const releaseGuard = acquireGuard();
-          if (!releaseGuard) { sleep(retryMs); continue; }
-          try { removeOwnedLock(lockPath, token); return; }
-          finally { removeOwnedLock(guardPath, releaseGuard); }
+        const existing = lockRecord(lockPath);
+        if (!existing) {
+          if (existsSync(lockPath)) throw new Error("Cannot release AI-DLC state lock because its owner record is unreadable");
+          return;
         }
+        if (existing.token !== token) return;
+        try { unlinkSync(lockPath); }
+        catch (error) { throw new Error(`Failed to release owned AI-DLC state lock: ${error instanceof Error ? error.message : String(error)}`); }
       };
     } finally { removeOwnedLock(guardPath, guardToken); }
     sleep(retryMs);
@@ -327,7 +328,8 @@ export const loadTask = (root: string, id: string, state = loadState(root)): Tas
 };
 
 export const saveState = (root: string, state: WorkflowState): string[] => {
-  const normalized = validateState(state);
+  const normalized = validateState(structuredClone(state));
+  const persisted = existsSync(statePath(root)) ? loadState(root) : undefined;
   const archived: string[] = [];
   if (normalized.schemaVersion === 3) {
     normalized.archive ??= {};
@@ -338,7 +340,14 @@ export const saveState = (root: string, state: WorkflowState): string[] => {
       assertNoSymlinkPath(root, summary.record);
       if (existsSync(path)) {
         const current = readFileSync(path, "utf8");
-        if (digest(current) !== summary.digest) throw new Error(`Archived task record conflicts: ${task.id}`);
+        if (digest(current) !== summary.digest) {
+          let orphan: TaskState;
+          try { orphan = JSON.parse(current) as TaskState; validateTask(task.id, orphan); }
+          catch { throw new Error(`Archived task record conflicts: ${task.id}`); }
+          const authority = persisted?.tasks[task.id];
+          if (persisted?.archive?.[task.id] || !authority || authority.createdAt !== task.createdAt || !terminal(orphan) || orphan.id !== task.id || orphan.createdAt !== task.createdAt) throw new Error(`Archived task record conflicts: ${task.id}`);
+          writeAtomic(path, content);
+        }
       } else writeAtomic(path, content);
       normalized.archive[task.id] = summary;
       delete normalized.tasks[task.id];
@@ -575,8 +584,7 @@ export const renderWorkplan = (task: TaskState): string => {
 export const renderViews = (root: string, state = loadState(root), selected: TaskState[] = Object.values(state.tasks)): void => {
   for (const task of selected) {
     if (!task.artifacts.workplan) continue;
-    const path = join(resolve(root), task.artifacts.workplan);
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, renderWorkplan(task), "utf8");
+    assertNoSymlinkPath(root, task.artifacts.workplan);
+    writeAtomic(join(resolve(root), task.artifacts.workplan), renderWorkplan(task));
   }
 };

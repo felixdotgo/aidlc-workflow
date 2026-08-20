@@ -1,23 +1,71 @@
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
-import { isAbsolute, join, normalize, resolve } from "node:path";
+import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
 import { loadMemoryRegistry, nextAction, selectAgenticMemory } from "./store.mjs";
 
 const separator = process.platform === "win32" ? "\\" : "/";
 
-export const option = (args, name) => {
-  const index = args.indexOf(name);
-  return index < 0 ? undefined : args[index + 1];
+export const parseArguments = (args, { valueOptions = [], booleanOptions = [] } = {}) => {
+  const valueNames = new Set(valueOptions);
+  const booleanNames = new Set(booleanOptions);
+  const positionals = [];
+  const values = new Map();
+  const flags = new Set();
+  const present = new Set();
+  let positionalOnly = false;
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index];
+    if (positionalOnly || !token.startsWith("--")) {
+      positionals.push(token);
+      continue;
+    }
+    if (token === "--") {
+      positionalOnly = true;
+      continue;
+    }
+    const separatorIndex = token.indexOf("=");
+    const name = separatorIndex < 0 ? token : token.slice(0, separatorIndex);
+    const inlineValue = separatorIndex < 0 ? undefined : token.slice(separatorIndex + 1);
+    if (!valueNames.has(name) && !booleanNames.has(name)) throw new Error(`Unknown option: ${name}`);
+    if (present.has(name)) throw new Error(`Duplicate option: ${name}`);
+    present.add(name);
+    if (booleanNames.has(name)) {
+      if (inlineValue !== undefined) throw new Error(`${name} does not accept a value`);
+      flags.add(name);
+      continue;
+    }
+    const value = inlineValue === undefined ? args[++index] : inlineValue;
+    if (value === undefined || value === "" || (inlineValue === undefined && value.startsWith("--"))) throw new Error(`${name} requires a value`);
+    values.set(name, value);
+  }
+  return { positionals, values, flags, present };
 };
 
-export const rootOption = (args) => resolve(option(args, "--root") ?? ".");
+export const option = (parsed, name) => parsed.values.get(name);
 
-export const withoutOptions = (args) => {
-  const result = [];
-  for (let index = 0; index < args.length; index += 1) {
-    if (args[index] === "--root") index += 1;
-    else result.push(args[index]);
+export const validateArguments = (parsed, { minPositionals, maxPositionals = minPositionals, valueOptions = [], booleanOptions = [], requiredOptions = [], usage = "Invalid arguments" }) => {
+  const allowed = new Set(["--root", ...valueOptions, ...booleanOptions]);
+  for (const name of parsed.present) if (!allowed.has(name)) throw new Error(`${name} is not valid for this command`);
+  if (parsed.positionals.length < minPositionals || parsed.positionals.length > maxPositionals) throw new Error(usage);
+  for (const name of requiredOptions) if (!parsed.present.has(name)) throw new Error(`${usage}: ${name} is required`);
+  return parsed;
+};
+
+export const rootOption = (parsed) => {
+  const explicit = option(parsed, "--root");
+  if (explicit !== undefined) {
+    const project = resolve(explicit);
+    const marker = join(project, ".agents");
+    if (!existsSync(marker) || !lstatSync(marker).isDirectory()) throw new Error(`Explicit project root must contain .agents: ${project}`);
+    return project;
   }
-  return result;
+  let candidate = resolve(process.cwd());
+  while (true) {
+    const marker = join(candidate, ".agents/aidlc");
+    if (existsSync(marker) && lstatSync(marker).isDirectory()) return candidate;
+    const parent = dirname(candidate);
+    if (parent === candidate) throw new Error("Project root not found; use --root to select an installed project");
+    candidate = parent;
+  }
 };
 
 const safeRelative = (path, label) => {

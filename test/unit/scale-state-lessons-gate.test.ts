@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { formatGateView } from "../../src/gate.js";
 import type { LessonRecord, TaskState, WorkflowState } from "../../src/model.js";
-import { lessonStateDigest, listTaskSummaries, loadTask, rebuildLessonIndex, saveState, searchLessons } from "../../src/state.js";
+import { lessonStateDigest, listTaskSummaries, loadTask, rebuildLessonIndex, renderViews, saveState, searchLessons } from "../../src/state.js";
 
 const terminalTask = (index: number, lesson?: LessonRecord): TaskState => {
   const id = `2026-${String(index).padStart(4, "0")}-terminal`;
@@ -76,6 +76,55 @@ test("state compaction refuses an archive symlink before writing", () => {
     const state: WorkflowState = { schemaVersion: 3, tasks: { [task.id]: task }, archive: {} };
     assert.throws(() => saveState(root, state), /crosses a symlink/);
     assert.equal(existsSync(join(outside, `${task.id}.json`)), false);
+  } finally { rmSync(root, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true }); }
+});
+
+test("state compaction recovers only a valid unreferenced archive orphan", () => {
+  const root = mkdtempSync(join(tmpdir(), "aidlc-state-orphan-"));
+  try {
+    const active = terminalTask(7);
+    active.phase = "build"; active.gate = "G2_codereview"; active.status = "active"; delete active.lessonDisposition;
+    const canonical: WorkflowState = { schemaVersion: 3, tasks: { [active.id]: active }, archive: {} };
+    saveState(root, canonical);
+
+    const orphan = terminalTask(7);
+    const archivePath = join(root, `.agents/data/state/archive/${active.id}.json`);
+    mkdirSync(join(root, ".agents/data/state/archive"), { recursive: true });
+    writeFileSync(archivePath, `${JSON.stringify(orphan, null, 2)}\n`);
+
+    const completed = structuredClone(active);
+    completed.phase = "done"; completed.gate = "none"; completed.status = "done";
+    completed.lessonDisposition = { status: "none", reason: "No durable lesson", source: "fixture", recordedAt: "2026-02-01T00:00:00.000Z" };
+    completed.updatedAt = "2026-02-01T00:00:00.000Z";
+    const retry: WorkflowState = { schemaVersion: 3, tasks: { [completed.id]: completed }, archive: {} };
+    assert.deepEqual(saveState(root, retry), [completed.id]);
+    assert.equal(loadTask(root, completed.id, retry)?.updatedAt, completed.updatedAt);
+
+    const conflictingRoot = mkdtempSync(join(tmpdir(), "aidlc-state-orphan-conflict-"));
+    try {
+      const conflictingCanonical: WorkflowState = { schemaVersion: 3, tasks: { [active.id]: active }, archive: {} };
+      saveState(conflictingRoot, conflictingCanonical);
+      const conflictingPath = join(conflictingRoot, `.agents/data/state/archive/${active.id}.json`);
+      mkdirSync(join(conflictingRoot, ".agents/data/state/archive"), { recursive: true });
+      writeFileSync(conflictingPath, "not-json\n");
+      const conflictingRetry: WorkflowState = { schemaVersion: 3, tasks: { [completed.id]: completed }, archive: {} };
+      assert.throws(() => saveState(conflictingRoot, conflictingRetry), /Archived task record conflicts/);
+      assert.equal(conflictingRetry.tasks[completed.id].status, "done");
+    } finally { rmSync(conflictingRoot, { recursive: true, force: true }); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("rendered workplans reject symlinked artifact parents", () => {
+  const root = mkdtempSync(join(tmpdir(), "aidlc-render-symlink-"));
+  const outside = mkdtempSync(join(tmpdir(), "aidlc-render-outside-"));
+  try {
+    mkdirSync(join(root, ".agents/data/tasks"), { recursive: true });
+    const current = terminalTask(9);
+    current.phase = "build"; current.gate = "G2_codereview"; current.status = "active"; delete current.lessonDisposition;
+    symlinkSync(outside, join(root, `.agents/data/tasks/${current.id}`));
+    const state: WorkflowState = { schemaVersion: 3, tasks: { [current.id]: current }, archive: {} };
+    assert.throws(() => renderViews(root, state, [current]), /crosses a symlink/);
+    assert.equal(existsSync(join(outside, "workplan.md")), false);
   } finally { rmSync(root, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true }); }
 });
 

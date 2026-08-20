@@ -138,7 +138,12 @@ test("state lock serializes local writers and only reclaims a stale dead owner",
   try {
     const release = acquireStateLock(root);
     assert.throws(() => acquireStateLock(root, { timeoutMs: 5, retryMs: 1 }), /Timed out waiting for AI-DLC state lock/);
+    const guardPath = join(root, ".agents/data/state/.aidlc-state.lock.guard");
+    writeFileSync(guardPath, JSON.stringify({ token: "live-guard", pid: process.pid, createdAt: Date.now() }));
     release();
+    assert.equal(existsSync(stateLockPath(root)), false);
+    assert.equal(JSON.parse(readFileSync(guardPath, "utf8")).token, "live-guard");
+    rmSync(guardPath);
 
     const path = stateLockPath(root);
     mkdirSync(join(root, ".agents/data/state"), { recursive: true });
@@ -150,6 +155,12 @@ test("state lock serializes local writers and only reclaims a stale dead owner",
     writeFileSync(path, JSON.stringify({ token: "live-owner", pid: process.pid, createdAt: 0 }));
     assert.throws(() => acquireStateLock(root, { timeoutMs: 5, retryMs: 1, staleMs: 0 }), /Timed out waiting for AI-DLC state lock/);
     assert.equal(JSON.parse(readFileSync(path, "utf8")).token, "live-owner");
+    rmSync(path);
+
+    const releaseReplaced = acquireStateLock(root);
+    writeFileSync(path, JSON.stringify({ token: "replacement-owner", pid: process.pid, createdAt: Date.now() }));
+    releaseReplaced();
+    assert.equal(JSON.parse(readFileSync(path, "utf8")).token, "replacement-owner");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

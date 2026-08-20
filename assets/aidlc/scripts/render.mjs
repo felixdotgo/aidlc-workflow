@@ -1,15 +1,23 @@
 #!/usr/bin/env node
-import { loadState, loadTask, renderViews, rootOption, withoutOptions } from "./lib/runtime.mjs";
+import { acquireStateLock, loadState, loadTask, parseArguments, renderViews, rootOption, validateArguments } from "./lib/runtime.mjs";
 
 const raw = process.argv.slice(2);
-const root = rootOption(raw);
-const [id] = withoutOptions(raw);
+const parsed = parseArguments(raw, { valueOptions: ["--root"], booleanOptions: ["--all"] });
+validateArguments(parsed, { minPositionals: 0, maxPositionals: 1, booleanOptions: ["--all"], usage: "Usage: render.mjs <task-id> [--root <path>] | --all [--root <path>]" });
+const all = parsed.flags.has("--all");
+if ((all && parsed.positionals.length) || (!all && parsed.positionals.length !== 1)) throw new Error("render.mjs requires either <task-id> or --all");
+const root = rootOption(parsed);
+const [id] = parsed.positionals;
+const releaseStateLock = acquireStateLock(root);
+try {
 const state = loadState(root);
-if (raw.includes("--all")) renderViews(root, state);
+if (all) renderViews(root, state);
 else {
-  if (!id) throw new Error("render.mjs requires <task-id>; use --all only for explicit maintenance");
   const task = loadTask(root, id, state);
   if (!task) throw new Error(`Unknown task: ${id}`);
   renderViews(root, state, [task]);
 }
 console.log("Rendered requested task review artifact(s) from canonical state.");
+} finally {
+  releaseStateLock();
+}

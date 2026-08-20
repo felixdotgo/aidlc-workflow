@@ -75,6 +75,10 @@ node .agents/aidlc/scripts/task-next.mjs <task-id> --require-stop
 node .agents/aidlc/scripts/gate-view.mjs <task-id>
 ```
 
+Installed lifecycle options may appear before or after positionals and accept both `--name value` and `--name=value`. Unknown, duplicate, command-irrelevant, missing-value, and surplus positional arguments are rejected before state I/O. Boolean options such as `--all`, `--include-archive`, and `--require-stop` do not accept values. When a literal value begins with `--`, use the equals form so it is not confused with a missing value.
+
+An explicit `--root <path>` wins and must identify a directory containing `.agents/`. Without `--root`, the runtime walks upward from the current working directory and selects the nearest ancestor containing `.agents/aidlc/`. If no installed-workflow marker exists, the command fails without creating local state. When invoking from a nested directory, use an absolute or upward-relative script path so Node can locate the script; root discovery then selects the project data.
+
 Every successful lifecycle mutation prints a JSON envelope with the affected `task` (and any command-specific result) plus a derived `nextAction`. Callers must execute `run_phase` actions immediately; a successful mutation is not permission to stop. In build, the action includes `itemId`, `remainingItems`, and an item-focused context command while work remains.
 
 `task-next.mjs --require-stop` prints the current action and exits `2` when its classification is `run_phase`; `CONTINUATION_REQUIRED` on stderr is a local guard against a premature final response. It exits normally for a valid human gate, durable blocker, terminal outcome, or completion. `task status ... --status blocked_on_user` fails instead of persisting when the current gate is not ready, and `gate-view.mjs` only renders tasks already in that validated status.
@@ -92,5 +96,7 @@ node .agents/aidlc/scripts/state.mjs task transition <task-id> --to <phase> --mo
 ```
 
 Self-transitions are rejected. After a G1 reopen, all non-deferred execution items return to `todo`; prior G2, verification, and review evidence cannot satisfy the new build boundary.
+
+State writes and generated workplans use symlink-checked atomic replacement. State-lock release is owner-token checked and never removes a replacement owner's lock. If a process stops after writing a terminal archive record but before committing the catalog, a retry replaces that orphan only when the persisted catalog still contains the same active task identity and does not reference an archive record; malformed, referenced, or identity-conflicting records fail closed.
 
 Use [Operating the workflow](./operating-workflow.md) for gates, approvals, handoffs, and task ownership.

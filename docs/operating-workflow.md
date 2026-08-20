@@ -41,6 +41,8 @@ node .agents/aidlc/scripts/gate-view.mjs <task-id>
 
 `task next` is the authoritative instruction for what happens next. `gate-view` renders the review packet consistently for G0, G1, and G2.
 
+Lifecycle options support both `--name value` and `--name=value` in any order. Invalid options and command shapes fail before lock or state access. From a project subdirectory, an omitted `--root` selects the nearest ancestor containing `.agents/aidlc/`; outside an installed project the command fails without creating `.agents`. Use explicit `--root` to select a different installed project.
+
 Successful lifecycle mutations return a JSON envelope containing the affected task/result and `nextAction`. During build, the action identifies the next `in_progress` or `todo` item; after all items are terminal it still returns `run_phase` until verification, adversarial review, and G2 preparation finish. Before any final response, the agent runs `task-next.mjs <task-id> --require-stop`; exit code `2` with `CONTINUATION_REQUIRED` means it must execute the printed command instead of replying.
 
 ## Gates and approvals
@@ -54,6 +56,8 @@ node .agents/aidlc/scripts/state.mjs gate approve <task-id> --gate <gate-name> -
 Do not invent approvals or approve unresolved design decisions. Approval evidence can be created only by `gate approve`; generic evidence recording cannot manufacture it. A passing G1 approval starts a build boundary. Verification, adversarial review, and G2 approval used to enter wrap must all belong to the current boundary.
 
 A reopened plan invalidates the prior G1 and G2 approvals, resets every non-deferred build item to `todo`, and requires current-build verification and review. Evidence is append-only, so the runtime identifies the current boundary by evidence order instead of trusting timestamps. For each affected area, at least one `test` or `lint` result is required and the latest result of every verification kind present must pass; one kind cannot hide a failure in the other.
+
+Terminal archiving commits the immutable record before the compact catalog. A retry may recover the narrow interrupted-write window only when the catalog still proves the same task is active and the unreferenced record has the same stable identity. Other archive conflicts require investigation rather than overwrite. Rendered workplans are derived views and are replaced atomically under the same state lock when rendered by the standalone command.
 
 ## Blocked work and successors
 
