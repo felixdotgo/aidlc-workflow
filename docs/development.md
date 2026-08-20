@@ -4,9 +4,9 @@ This guide is for contributors to `@felixdotgo/aidlc-workflow`. It covers local 
 
 ## Requirements and dependencies
 
-- Node.js 20 or newer is required by the package runtime.
+- Node.js 20.17 or newer is required by the package runtime.
 - npm installs the repository development dependencies.
-- The package currently has no declared runtime npm dependencies; it uses Node.js built-ins at runtime.
+- `@inquirer/prompts` is the runtime dependency for interactive CLI prompts; installed lifecycle scripts remain dependency-free.
 - Development uses TypeScript and `@types/node` as declared in `package.json`.
 
 ```sh
@@ -41,6 +41,32 @@ The asset build copies `assets/aidlc/` and `skills/` into `dist/assets/.agents/`
 | `npm run release:check` | Run the repository release-evidence policy check. |
 
 Run the narrowest relevant test while iterating, then run `npm test` and `npm run lint` before handing off a non-trivial change. See [Testing and release](./testing-and-release.md) for the package smoke test and evaluator.
+
+## Local build and registry-free installation
+
+Use this fast smoke test to install workflow assets from the current checkout into a disposable consumer project. It invokes the freshly compiled CLI directly, so the consumer installation does not use `npm install`, `npx`, a published package, or an npm registry. Repository bootstrap and build still use npm and the dependencies already installed in this checkout.
+
+Run the following POSIX shell commands from the repository root:
+
+```sh
+AIDLC_REPO="$(pwd)"
+AIDLC_LOCAL_PROJECT="$(mktemp -d "${TMPDIR:-/tmp}/aidlc-local-project.XXXXXX")"
+
+npm run build
+node "$AIDLC_REPO/dist/src/cli.js" init "$AIDLC_LOCAL_PROJECT" --agent codex --dry-run
+node "$AIDLC_REPO/dist/src/cli.js" init "$AIDLC_LOCAL_PROJECT" --agent codex --yes
+node "$AIDLC_REPO/dist/src/cli.js" status "$AIDLC_LOCAL_PROJECT"
+node "$AIDLC_REPO/dist/src/cli.js" doctor "$AIDLC_LOCAL_PROJECT" --strict
+node "$AIDLC_LOCAL_PROJECT/.agents/aidlc/scripts/state.mjs" task list --root "$AIDLC_LOCAL_PROJECT"
+
+printf 'Local test project: %s\n' "$AIDLC_LOCAL_PROJECT"
+```
+
+The dry run previews the managed writes before `--yes` applies them. `status` describes the installed version and adapters, `doctor --strict` is the integrity check, and the final command confirms that the copied dependency-free lifecycle runtime can read its canonical state without the package CLI.
+
+Always use a new empty directory and inspect the printed path before removing it manually. Do not point this recipe at a real project unless its managed files and workflow state are intentional test targets. Reusing a fixture across package versions triggers the human-only upgrade protection by design. On Windows, use WSL or Git Bash for the snippet, or create a temporary directory in PowerShell and pass its absolute path to the same Node commands.
+
+This direct-`dist` smoke verifies the compiled checkout, but it does not verify the published file allowlist, package bin metadata, or tarball exclusions. Before release, also run the separate [package smoke test](./testing-and-release.md#package-smoke-test), which packs and extracts a local tarball without installing or fetching the package from a registry.
 
 ## Ownership boundaries
 
