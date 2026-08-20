@@ -54,6 +54,10 @@ test("installed local scripts drive the lifecycle without an aidlc executable or
     run(root, "state.mjs", ["task", "status", id, "--status", "blocked_on_user"]);
     const g1 = JSON.parse(run(root, "state.mjs", ["gate", "approve", id, "--gate", "G1_review", "--source", "human approval"]));
     assert.equal(g1.task.phase, "build");
+    const forgedApproval = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "evidence", "add", id, "--kind", "approval", "--gate", "G2_codereview", "--result", "pass"], { cwd: root, encoding: "utf8" });
+    assert.notEqual(forgedApproval.status, 0); assert.match(forgedApproval.stderr, /approvals use gate approve/);
+    const rawTransition = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "task", "transition", id, "--to", "build"], { cwd: root, encoding: "utf8" });
+    assert.notEqual(rawTransition.status, 0); assert.match(rawTransition.stderr, /--mode audited/);
 
     const blocked = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/gate-check.mjs"), id, "--gate", "G2_codereview"], { cwd: root, encoding: "utf8" });
     assert.equal(blocked.status, 1);
@@ -75,8 +79,13 @@ test("installed local scripts drive the lifecycle without an aidlc executable or
     const latestFail = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/gate-check.mjs"), id, "--gate", "G2_codereview"], { cwd: root, encoding: "utf8" });
     assert.equal(latestFail.status, 1); assert.match(latestFail.stdout, /root/);
     run(root, "state.mjs", ["evidence", "add", id, "--kind", "lint", "--area", "root", "--result", "pass", "--source", "repaired"]);
+    const independentFailure = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "task", "status", id, "--status", "blocked_on_user"], { cwd: root, encoding: "utf8" });
+    assert.notEqual(independentFailure.status, 0); assert.match(independentFailure.stderr, /VERIFY_EVIDENCE/);
+    run(root, "state.mjs", ["evidence", "add", id, "--kind", "test", "--area", "root", "--result", "pass", "--source", "repaired test"]);
     const prepared = JSON.parse(run(root, "state.mjs", ["task", "status", id, "--status", "blocked_on_user"]));
     assert.equal(prepared.nextAction.classification, "await_user");
+    const cancelWait = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "task", "status", id, "--status", "active"], { cwd: root, encoding: "utf8" });
+    assert.notEqual(cancelWait.status, 0); assert.match(cancelWait.stderr, /Cannot cancel a validated human-gate wait/);
     const next = JSON.parse(run(root, "state.mjs", ["task", "next", id]));
     assert.equal(next.classification, "await_user");
     assert.match(run(root, "gate-view.mjs", [id, "--format", "plain"]), /^\[IMPORTANT\].*GATE G2/);
@@ -92,7 +101,7 @@ test("installed local scripts drive the lifecycle without an aidlc executable or
     assert.equal(g2.task.phase, "wrap"); assert.equal(g2.nextAction.classification, "run_phase");
     run(root, "state.mjs", ["lesson", "record", id, "L1", "--area", "root", "--summary", "Use installed lifecycle commands", "--prevention", "Do not hand-edit state", "--example", "state.mjs task show", "--promotion", "orchestrator", "--source", "runtime smoke"]);
     assert.equal(JSON.parse(run(root, "state.mjs", ["lesson", "search", "--query", "lifecycle", "--area", "root"])).length, 1);
-    run(root, "state.mjs", ["task", "transition", id, "--to", "done"]);
+    run(root, "state.mjs", ["task", "archive", id]);
     assert.equal(JSON.parse(run(root, "state.mjs", ["task", "next", id])).classification, "complete");
     const compact = JSON.parse(readFileSync(join(root, ".agents/data/state/aidlc-state.json"), "utf8"));
     assert.equal(compact.schemaVersion, 3); assert.equal(compact.tasks[id], undefined); assert.equal(compact.archive[id].lessonCount, 1);
@@ -119,13 +128,16 @@ test("installed runtime supports audited handoff, reopen, close, and atomic supe
     run(root, "state.mjs", ["task", "status", predecessor, "--status", "blocked_on_user"]);
     run(root, "state.mjs", ["gate", "approve", predecessor, "--gate", "G0_confirm", "--source", "human"]);
     run(root, "state.mjs", ["decision", "set", predecessor, "D1", "--status", "approved", "--label", "Lifecycle"]);
+    run(root, "state.mjs", ["task", "item", predecessor, "T1", "--status", "todo", "--label", "Rebuild after reopen"]);
     run(root, "state.mjs", ["task", "status", predecessor, "--status", "blocked_on_user"]);
     run(root, "state.mjs", ["gate", "approve", predecessor, "--gate", "G1_review", "--source", "human"]);
+    run(root, "state.mjs", ["task", "item", predecessor, "T1", "--status", "done"]);
 
     const handoff = JSON.parse(run(root, "state.mjs", ["task", "handoff", predecessor, "--kind", "release_failed", "--reason", "provider evidence failed", "--source", "human"]));
     assert.equal(handoff.nextAction.classification, "blocked"); assert.equal(handoff.nextAction.actions.some((item: { id: string }) => item.id === "reopen_g1"), true);
     const reopened = JSON.parse(run(root, "state.mjs", ["task", "reopen", predecessor, "--to", "plan", "--reason", "new design", "--source", "human"]));
     assert.equal(reopened.task.phase, "plan"); assert.equal(reopened.task.evidence.at(-1).result, "fail");
+    assert.equal(reopened.task.tasks.find((item: { id: string }) => item.id === "T1").status, "todo");
 
     run(root, "state.mjs", ["task", "handoff", predecessor, "--kind", "structural_change", "--reason", "use successor", "--source", "human"]);
     run(root, "state.mjs", ["task", "create", successor, "--title", "Release successor", "--type", "bug", "--language", "en", "--area", "root"]);

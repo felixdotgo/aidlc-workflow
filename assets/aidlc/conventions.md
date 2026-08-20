@@ -13,9 +13,11 @@ clarify/G0_confirm → plan/G1_review → build/G2_codereview → wrap/none → 
                                       ↘ paused/handoff → reopened plan, closed, or superseded → fresh successor G0
 ```
 
-Each transition requires the preceding approval evidence. Build additionally requires every decision to be `approved`, `changed`, or `dropped`. Wrap requires passing test/lint evidence, passing review evidence, and G2 approval.
+Each transition requires the preceding approval evidence. Build additionally requires every decision to be `approved`, `changed`, or `dropped`. The latest passing G1 approval starts the current build boundary. Wrap requires current-build verification, current-build review, and current-build G2 approval; evidence from an older build boundary cannot advance a reopened task.
 
-`blocked_on_user` is reserved for a gate that is structurally ready and waiting for explicit human approval. A real blocker or exhausted repair bound uses `task handoff`, which stores a reason and returns structured `reopen_g1`, `create_successor`, and `close` choices. `closed` and `superseded` are terminal non-success outcomes that preserve the phase where work stopped; only `done` is successful completion. A successor is created as a fresh G0 task, then linked atomically with `task supersede`; it never inherits approvals or evidence.
+Verification is evaluated independently for each affected area and each `test` or `lint` kind recorded after the current build boundary. At least one verification kind must exist per area, and the latest record of every kind present must pass. A lint pass cannot hide a test failure, or vice versa.
+
+`blocked_on_user` is reserved for a gate that is structurally ready and waiting for explicit human approval. It cannot be cancelled with `task status --status active`; use an audited lifecycle action instead. A real blocker or exhausted repair bound uses `task handoff`, which stores a reason and returns structured `reopen_g1`, `create_successor`, and `close` choices. Reopening G1 resets every non-deferred build item to `todo`. `closed` and `superseded` are terminal non-success outcomes that preserve the phase where work stopped; only `done` is successful completion. A successor is created as a fresh G0 task, then linked atomically with `task supersede`; it never inherits approvals or evidence.
 
 Lifecycle commands that end or redirect work require an explicit reason and source:
 
@@ -35,7 +37,7 @@ Decision states:
 
 ## Evidence
 
-Evidence kinds are `approval`, `spec`, `test`, `lint`, `review`, and `diagnostic`; results are `pass`, `fail`, or `skip`. A skipped verification must state residual risk. Evidence is append-only during a task; corrections add a new record rather than rewriting history.
+Evidence kinds are `approval`, `spec`, `test`, `lint`, `review`, and `diagnostic`; results are `pass`, `fail`, or `skip`. Approval evidence is created only by atomic `gate approve`; the generic `evidence add` command rejects `approval`. A skipped verification must state residual risk. Evidence is append-only during a task; corrections add a new record rather than rewriting history, and current-build boundaries use that append order rather than wall-clock ordering.
 
 ## Human gate forms
 

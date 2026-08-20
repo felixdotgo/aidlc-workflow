@@ -51,11 +51,13 @@ Approval is an explicit human action. When the agent receives an approval, it re
 node .agents/aidlc/scripts/state.mjs gate approve <task-id> --gate <gate-name> --source "<explicit approval>"
 ```
 
-Do not invent approvals or approve unresolved design decisions. A reopened plan invalidates the prior G1 approval, so the updated plan must be reviewed again.
+Do not invent approvals or approve unresolved design decisions. Approval evidence can be created only by `gate approve`; generic evidence recording cannot manufacture it. A passing G1 approval starts a build boundary. Verification, adversarial review, and G2 approval used to enter wrap must all belong to the current boundary.
+
+A reopened plan invalidates the prior G1 and G2 approvals, resets every non-deferred build item to `todo`, and requires current-build verification and review. Evidence is append-only, so the runtime identifies the current boundary by evidence order instead of trusting timestamps. For each affected area, at least one `test` or `lint` result is required and the latest result of every verification kind present must pass; one kind cannot hide a failure in the other.
 
 ## Blocked work and successors
 
-`blocked_on_user` means a valid human gate is ready. The status command validates gate prerequisites before persisting it, and `gate-view` refuses to present an active or unready task. It does not mean a failed change is waiting for a rubber stamp. When verification or review cannot pass, the workflow records a durable handoff and offers structured options.
+`blocked_on_user` means a valid human gate is ready. The status command validates gate prerequisites before persisting it, rejects attempts to cancel a validated wait with `--status active`, and `gate-view` refuses to present an active or unready task. It does not mean a failed change is waiting for a rubber stamp. When verification or review cannot pass, the workflow records a durable handoff and offers structured options.
 
 ```sh
 node .agents/aidlc/scripts/state.mjs task handoff <task-id> --kind <kind> --reason "<reason>" --source "<evidence>"

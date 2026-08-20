@@ -59,7 +59,11 @@ if (group === "state" && action === "migrate") {
   };
   persist([task]); respond(task);
 } else if (group === "task" && action === "transition") {
-  const task = transitionTask(state, id, option(raw, "--to")); persist([task]); respond(task);
+  const mode = option(raw, "--mode"); const reason = option(raw, "--reason"); const source = option(raw, "--source");
+  if (mode !== "audited" || !reason?.trim() || !source?.trim()) throw new Error("task transition requires --mode audited, --reason, and --source");
+  const from = state.tasks[id]?.phase; const target = option(raw, "--to"); const task = transitionTask(state, id, target);
+  task.evidence.push({ kind: "diagnostic", result: "pass", source, detail: `Audited transition ${from} → ${target}: ${reason}`, recordedAt: now() });
+  persist([task]); respond(task);
 } else if (group === "task" && action === "archive") {
   const task = transitionTask(state, id, "done"); persist([task], true); respond(task);
 } else if (group === "task" && action === "handoff") {
@@ -77,6 +81,7 @@ if (group === "state" && action === "migrate") {
 } else if (group === "task" && action === "status") {
   const task = state.tasks[id]; const status = option(raw, "--status");
   if (!task || !["active", "blocked_on_user", "paused", "done"].includes(status)) throw new Error("task status requires active task id and valid --status");
+  if (task.status === "blocked_on_user" && status === "active") throw new Error("Cannot cancel a validated human-gate wait with task status; use an audited lifecycle action");
   if (status === "blocked_on_user") {
     const errors = checkGate(root, state, id, task.gate).filter((item) => item.level === "ERROR");
     if (errors.length) throw new Error(`Gate is not ready: ${errors.map((item) => `${item.code}: ${item.message}`).join("; ")}`);
@@ -98,7 +103,7 @@ if (group === "state" && action === "migrate") {
   task.updatedAt = now(); persist([task]); respond(task);
 } else if (group === "evidence" && action === "add") {
   const task = state.tasks[id]; const kind = option(raw, "--kind"); const result = option(raw, "--result");
-  if (!task || !["approval", "spec", "test", "lint", "review", "diagnostic"].includes(kind) || !["pass", "fail", "skip"].includes(result)) throw new Error("evidence add requires active task id, valid --kind, and valid --result");
+  if (!task || !["spec", "test", "lint", "review", "diagnostic"].includes(kind) || !["pass", "fail", "skip"].includes(result)) throw new Error("evidence add requires active task id, non-approval --kind, and valid --result; approvals use gate approve");
   task.evidence.push({ kind, gate: option(raw, "--gate"), area: option(raw, "--area"), result, source: option(raw, "--source") ?? "local Node.js script", detail: option(raw, "--detail"), recordedAt: now() });
   task.updatedAt = now(); persist([task]); respond(task);
 } else if (group === "lesson" && action === "record") {

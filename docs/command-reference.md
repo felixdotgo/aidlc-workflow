@@ -79,4 +79,18 @@ Every successful lifecycle mutation prints a JSON envelope with the affected `ta
 
 `task-next.mjs --require-stop` prints the current action and exits `2` when its classification is `run_phase`; `CONTINUATION_REQUIRED` on stderr is a local guard against a premature final response. It exits normally for a valid human gate, durable blocker, terminal outcome, or completion. `task status ... --status blocked_on_user` fails instead of persisting when the current gate is not ready, and `gate-view.mjs` only renders tasks already in that validated status.
 
+Human approval is a dedicated atomic operation:
+
+```sh
+node .agents/aidlc/scripts/state.mjs gate approve <task-id> --gate <gate> --source "<explicit approval>"
+```
+
+`evidence add` accepts `spec`, `test`, `lint`, `review`, and `diagnostic`; it rejects `approval`. A validated `blocked_on_user` wait cannot be cancelled with `task status --status active`. Normal phase advancement uses `gate approve`, and wrap completion uses `task archive`. The low-level transition escape hatch is intentionally noisy, records diagnostic evidence, still applies all transition checks, and requires audit metadata:
+
+```sh
+node .agents/aidlc/scripts/state.mjs task transition <task-id> --to <phase> --mode audited --reason "<reason>" --source "<source>"
+```
+
+Self-transitions are rejected. After a G1 reopen, all non-deferred execution items return to `todo`; prior G2, verification, and review evidence cannot satisfy the new build boundary.
+
 Use [Operating the workflow](./operating-workflow.md) for gates, approvals, handoffs, and task ownership.
