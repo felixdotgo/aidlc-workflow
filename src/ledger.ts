@@ -42,7 +42,7 @@ export const validateLedgerEvent = (value: unknown): TaskLedgerEvent => {
   const event = value as Partial<TaskLedgerEvent>;
   if (event.schemaVersion !== 1 || typeof event.id !== "string" || !taskIdPattern.test(event.id) || typeof event.taskId !== "string" || !taskIdPattern.test(event.taskId) || (event.parentDigest !== null && !/^[a-f0-9]{64}$/.test(event.parentDigest ?? "")) || typeof event.actor !== "string" || !event.actor.trim() || !iso(event.recordedAt) || !event.snapshot || typeof event.digest !== "string" || !/^[a-f0-9]{64}$/.test(event.digest)) throw new Error("Invalid ledger event fields");
   if (event.snapshot.id !== event.taskId) throw new Error(`Ledger event task mismatch: ${event.id}`);
-  validateState({ schemaVersion: 3, tasks: { [event.taskId]: event.snapshot }, archive: {} });
+  validateState({ schemaVersion: 4, tasks: { [event.taskId]: event.snapshot }, archive: {} });
   const { digest: supplied, ...unsigned } = event as TaskLedgerEvent;
   if (digest(unsigned) !== supplied) throw new Error(`Ledger event digest mismatch: ${event.id}`);
   return event as TaskLedgerEvent;
@@ -51,7 +51,7 @@ export const validateLedgerEvent = (value: unknown): TaskLedgerEvent => {
 export const createLedgerEvent = (task: TaskState, parentDigest: string | null, actor: string, recordedAt = new Date().toISOString(), id: string = randomUUID()): TaskLedgerEvent => {
   assertSafeTaskId(task.id);
   if (!actor.trim() || !iso(recordedAt) || !taskIdPattern.test(id)) throw new Error("Invalid ledger event metadata");
-  validateState({ schemaVersion: 3, tasks: { [task.id]: task }, archive: {} });
+  validateState({ schemaVersion: 4, tasks: { [task.id]: task }, archive: {} });
   const unsigned: UnsignedEvent = { schemaVersion: 1, id, taskId: task.id, parentDigest, actor, recordedAt, snapshot: task };
   return { ...unsigned, digest: digest(unsigned) };
 };
@@ -106,7 +106,7 @@ export const loadTrackedState = (root: string): WorkflowState | undefined => {
     const reduced = reduceTaskLedger(loadTaskLedger(root, entry.name));
     if (reduced) tasks[entry.name] = reduced.task;
   }
-  return validateState({ schemaVersion: 3, tasks, archive: {} });
+  return validateState({ schemaVersion: 4, tasks, archive: {} });
 };
 
 export const appendTaskLedgerEvent = (root: string, task: TaskState, actor: string): TaskLedgerEvent => {

@@ -130,11 +130,11 @@ test("current canonical JSON installation removes a leftover BOARD projection", 
     assert.equal(plan.find((item) => item.path === ".agents/data/state/BOARD.md")?.action, "delete");
     applyUpgrade(root, plan);
     assert.equal(existsSync(board), false);
-    assert.deepEqual(JSON.parse(readFileSync(join(root, ".agents/data/state/aidlc-state.json"), "utf8")), { schemaVersion: 3, tasks: {}, archive: {} });
+    assert.deepEqual(JSON.parse(readFileSync(join(root, ".agents/data/state/aidlc-state.json"), "utf8")), { schemaVersion: 4, tasks: {}, archive: {} });
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("upgrade migrates valid canonical state v1 to v3 transactionally without changing active task content", () => {
+test("upgrade migrates valid canonical state v1 to v4 transactionally without changing active task content", () => {
   const root = makeRoot();
   try {
     applyPlan(root, planInit(options(root)));
@@ -145,9 +145,9 @@ test("upgrade migrates valid canonical state v1 to v3 transactionally without ch
     };
     writeFileSync(path, `${JSON.stringify({ schemaVersion: 1, tasks: { [legacyTask.id]: legacyTask } }, null, 2)}\n`);
     const plan = planUpgrade(root); const stateItem = plan.find((item) => item.path === ".agents/data/state/aidlc-state.json");
-    assert.equal(stateItem?.action, "migrate"); assert.match(stateItem?.reason ?? "", /v1 to v3/);
+    assert.equal(stateItem?.action, "migrate"); assert.match(stateItem?.reason ?? "", /v1 to v4/);
     const result = applyUpgrade(root, plan); const migrated = JSON.parse(readFileSync(path, "utf8"));
-    assert.equal(migrated.schemaVersion, 3); assert.deepEqual(migrated.tasks[legacyTask.id], legacyTask); assert.deepEqual(migrated.archive, {});
+    assert.equal(migrated.schemaVersion, 4); assert.deepEqual(migrated.tasks[legacyTask.id], legacyTask); assert.deepEqual(migrated.archive, {});
     assert.equal(JSON.parse(readFileSync(join(root, result.backup, ".agents/data/state/aidlc-state.json"), "utf8")).schemaVersion, 1);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -57,10 +57,10 @@ test("installs bundled assets with manifest v2 and separate project/state owners
     assert.match(readFileSync(join(root, ".agents/aidlc/templates/model-contract.md"), "utf8"), /\.agents\/project\/rules/);
     assert.match(readFileSync(join(root, ".agents/aidlc/scripts/lib/context-runtime.mjs"), "utf8"), /\.agents\/project\/profiles/);
     assert.match(readFileSync(join(root, ".agents/aidlc/phase-index.md"), "utf8"), /\.agents\/data\/index\/repo-map\.md/);
-    assert.deepEqual(JSON.parse(readFileSync(join(root, ".agents/data/state/aidlc-state.json"), "utf8")), { schemaVersion: 3, tasks: {}, archive: {} });
+    assert.deepEqual(JSON.parse(readFileSync(join(root, ".agents/data/state/aidlc-state.json"), "utf8")), { schemaVersion: 4, tasks: {}, archive: {} });
     assert.equal(JSON.parse(readFileSync(join(root, ".agents/data/lessons/index.json"), "utf8")).schemaVersion, 1);
     assert.equal(JSON.parse(readFileSync(join(root, ".agents/data/memory/agentic-memory.json"), "utf8")).schemaVersion, 1);
-    assert.equal(JSON.parse(readFileSync(join(root, ".agents/aidlc/schemas/state.schema.json"), "utf8")).properties.schemaVersion.const, 3);
+    assert.equal(JSON.parse(readFileSync(join(root, ".agents/aidlc/schemas/state.schema.json"), "utf8")).properties.schemaVersion.const, 4);
     assert.match(doctor(root), /^OK:/);
     assert.match(status(root), /installed version: 0.0.1/);
   } finally { rmSync(root, { recursive: true, force: true }); }

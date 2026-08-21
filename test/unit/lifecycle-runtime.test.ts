@@ -186,7 +186,7 @@ test("installed local scripts drive the lifecycle without an aidlc executable or
     run(root, "state.mjs", ["task", "archive", id]);
     assert.equal(JSON.parse(run(root, "state.mjs", ["task", "next", id])).nextAction.classification, "complete");
     const compact = JSON.parse(readFileSync(join(root, ".agents/data/state/aidlc-state.json"), "utf8"));
-    assert.equal(compact.schemaVersion, 3); assert.equal(compact.tasks[id], undefined); assert.equal(compact.archive[id].lessonCount, 1);
+    assert.equal(compact.schemaVersion, 4); assert.equal(compact.tasks[id], undefined); assert.equal(compact.archive[id].lessonCount, 1);
     assert.ok(existsSync(join(root, ".agents/data/state/archive", `${id}.json`)));
     assert.match(run(root, "state.mjs", ["task", "show", id]), /Use installed lifecycle commands/);
     const catalog = JSON.parse(run(root, "state.mjs", ["task", "show", "--include-archive"]));
@@ -227,7 +227,7 @@ test("installed runtime supports audited handoff, reopen, close, and atomic supe
     assert.equal(superseded.nextAction.classification, "terminal"); assert.equal(superseded.nextAction.outcome, "superseded");
     assert.equal(JSON.parse(run(root, "state.mjs", ["task", "show", successor])).result.predecessorTaskId, predecessor);
     const compact = JSON.parse(readFileSync(join(root, ".agents/data/state/aidlc-state.json"), "utf8"));
-    assert.equal(compact.schemaVersion, 3); assert.equal(compact.tasks[predecessor], undefined); assert.equal(compact.archive[predecessor].status, "superseded");
+    assert.equal(compact.schemaVersion, 4); assert.equal(compact.tasks[predecessor], undefined); assert.equal(compact.archive[predecessor].status, "superseded");
 
     const closedId = "2026-0004-closed"; run(root, "state.mjs", ["task", "create", closedId, "--title", "Abandoned", "--area", "root"]);
     const closed = JSON.parse(run(root, "state.mjs", ["task", "close", closedId, "--reason", "no longer needed", "--source", "human"]));

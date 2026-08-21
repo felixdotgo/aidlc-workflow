@@ -7,7 +7,7 @@ import type { AgentId, FileSpec, PlannedWrite, TaskState, WorkflowState } from "
 import { planProjectLayoutMigration } from "./project-migration.js";
 import { mergeManagedBlock } from "./managed-content.js";
 import { resolveProjectPath, resolveProjectPathWithoutSymlinks } from "./project-path.js";
-import { emptyState, prepareV3Migration, renderWorkplan, validateState } from "./state.js";
+import { emptyState, prepareV4Migration, renderWorkplan, validateState } from "./state.js";
 import { contentHash, coreWorkflowFiles, initialProjectFiles, manifestSpec } from "./workflow.js";
 
 const safePath = (root: string, relative: string): string => resolveProjectPath(root, relative, "Unsafe upgrade path");
@@ -132,16 +132,16 @@ export const planUpgrade = (root: string): PlannedWrite[] => {
   if (canonicalState && canonicalState.action === "preserve") {
     const parsed = JSON.parse(canonicalState.content) as WorkflowState;
     const normalized = validateState(parsed);
-    if (parsed.schemaVersion === 1 || parsed.schemaVersion === 2) {
-      const migration = prepareV3Migration(normalized);
+    if (parsed.schemaVersion === 1 || parsed.schemaVersion === 2 || parsed.schemaVersion === 3) {
+      const migration = prepareV4Migration(normalized);
       canonicalState.content = `${JSON.stringify(migration.state, null, 2)}\n`;
       canonicalState.action = "migrate";
-      canonicalState.reason = `migrate canonical state schema v${parsed.schemaVersion} to v3 compact catalog without changing task content`;
+      canonicalState.reason = `migrate canonical state schema v${parsed.schemaVersion} to v4 compact catalog${migration.stamped.length ? ` and stamp pre-existing ready G2 waits: ${migration.stamped.join(", ")}` : " without changing task content"}`;
       for (const record of migration.records) {
         assertNoSymlinkPath(project, record.path);
         const target = safePath(project, record.path);
         if (!existsSync(target)) plan.push({ path: record.path, owner: "aidlc-state", ownershipClass: "state", content: record.content, action: "migrate", reason: "write immutable terminal task record" });
-        else if (readFileSync(target, "utf8") !== record.content) plan.push({ path: record.path, owner: "aidlc-state", ownershipClass: "state", content: record.content, action: "conflict", reason: "terminal task record conflicts with canonical v2 content" });
+        else if (readFileSync(target, "utf8") !== record.content) plan.push({ path: record.path, owner: "aidlc-state", ownershipClass: "state", content: record.content, action: "conflict", reason: "terminal task record conflicts with prior canonical content" });
       }
       const lessonIndex = plan.find((item) => item.path === ".agents/data/lessons/index.json");
       if (!lessonIndex) throw new Error("Lesson index plan is missing");
@@ -153,8 +153,8 @@ export const planUpgrade = (root: string): PlannedWrite[] => {
   planProjectLayoutMigration(project, plan);
   if (legacy && !existsSync(safePath(project, ".agents/data/state/aidlc-state.json"))) {
     const migration = migrateLegacyBoard(project);
-    const compact = prepareV3Migration(migration.state);
-    plan.push({ path: ".agents/data/state/aidlc-state.json", owner: "aidlc-state", ownershipClass: "state", content: `${JSON.stringify(compact.state, null, 2)}\n`, action: "migrate", reason: "migrate legacy BOARD to canonical v3 state" });
+    const compact = prepareV4Migration(migration.state);
+    plan.push({ path: ".agents/data/state/aidlc-state.json", owner: "aidlc-state", ownershipClass: "state", content: `${JSON.stringify(compact.state, null, 2)}\n`, action: "migrate", reason: "migrate legacy BOARD to canonical v4 state" });
     for (const record of compact.records) plan.push({ path: record.path, owner: "aidlc-state", ownershipClass: "state", content: record.content, action: "migrate", reason: "preserve legacy terminal task as immutable record" });
     const lessonIndex = plan.find((item) => item.path === ".agents/data/lessons/index.json");
     if (lessonIndex) { lessonIndex.content = `${JSON.stringify(compact.lessonIndex, null, 2)}\n`; lessonIndex.action = "migrate"; lessonIndex.reason = "build derived lesson index during legacy migration"; }

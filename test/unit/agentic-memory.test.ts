@@ -52,6 +52,6 @@ test("explicit migration compacts legacy terminal tasks and is idempotent", () =
     assert.equal(migrateState(root).migrated, true);
     assert.equal(migrateState(root).migrated, false);
     const compact = JSON.parse(readFileSync(join(root, ".agents/data/state/aidlc-state.json"), "utf8"));
-    assert.equal(compact.schemaVersion, 3); assert.equal(compact.tasks[active.id].id, active.id); assert.equal(compact.archive[terminal.id].status, "done");
+    assert.equal(compact.schemaVersion, 4); assert.equal(compact.tasks[active.id].id, active.id); assert.equal(compact.archive[terminal.id].status, "done");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

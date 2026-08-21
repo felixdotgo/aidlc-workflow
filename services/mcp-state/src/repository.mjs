@@ -1,15 +1,29 @@
 import Database from "better-sqlite3";
 import pg from "pg";
 import { isAbsolute, resolve } from "node:path";
-import { nextAction, transitionTask, validateState } from "./lifecycle-core.mjs";
+import { isDeepStrictEqual } from "node:util";
+import { nextAction, stampLegacyG2Waits, transitionTask, validateState } from "./lifecycle-core.mjs";
 
-const emptyState = () => ({ schemaVersion: 3, tasks: {}, archive: {} });
+const emptyState = () => ({ schemaVersion: 4, tasks: {}, archive: {} });
 const emptyIndex = (revision) => ({ schemaVersion: 1, sourceRevision: revision, taskIds: [], updatedAt: new Date().toISOString() });
 const parse = (value) => JSON.parse(value);
 const encode = (value) => JSON.stringify(value);
-const snapshot = (row) => ({ workspace: row.workspace, revision: Number(row.revision), state: parse(row.state), index: parse(row.task_index), updatedAt: row.updated_at });
-const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+// Rows persisted by a pre-v4 service are the only trusted source of legacy G2 stamps; the stamp
+// timestamp reuses task.updatedAt so repeated loads stay byte-identical until a write persists v4.
+const upgradeStoredState = (state) => {
+  if (Number(state?.schemaVersion) !== 3) return state;
+  const next = structuredClone(state);
+  next.schemaVersion = 4;
+  stampLegacyG2Waits(next);
+  return next;
+};
+const snapshot = (row) => ({ workspace: row.workspace, revision: Number(row.revision), state: upgradeStoredState(parse(row.state)), index: parse(row.task_index), updatedAt: row.updated_at });
+const same = (left, right) => isDeepStrictEqual(left, right);
 const assertStateIntegrity = (before, after) => {
+  for (const [taskId, current] of Object.entries(after.tasks ?? {})) {
+    const marker = current?.legacyG2Wait;
+    if (marker !== undefined && !same(marker, before.tasks?.[taskId]?.legacyG2Wait)) throw new Error(`Task ${taskId} legacy G2 wait marker is migration-owned and cannot be created or changed by a client`);
+  }
   for (const [taskId, previous] of Object.entries(before.tasks ?? {})) {
     const current = after.tasks?.[taskId];
     if (!current) {
@@ -21,19 +35,32 @@ const assertStateIntegrity = (before, after) => {
     if (currentEvidence.length < priorEvidence.length || !same(currentEvidence.slice(0, priorEvidence.length), priorEvidence)) throw new Error(`Task ${taskId} evidence history is append-only`);
     if (previous.status !== "blocked_on_user") continue;
     const leftWait = current.status !== "blocked_on_user" || current.phase !== previous.phase || current.gate !== previous.gate;
-    if (!leftWait) continue;
+    const withoutVolatile = ({ evidence, updatedAt, status, ...rest }) => rest;
+    if (!leftWait) {
+      // Readiness-bearing state is frozen while a task waits at a gate; only evidence may be appended.
+      if (!same(withoutVolatile(current), withoutVolatile(previous))) throw new Error(`Task ${taskId} is frozen while waiting at ${previous.gate}; only evidence may be appended`);
+      continue;
+    }
+    // Mirrors the local CLI recovery for an invalid wait at the gateless wrap phase; it flips only the status and is not a human approval.
+    if (previous.gate === "none" && previous.phase === "wrap" && current.status === "active" && current.phase === previous.phase && current.gate === previous.gate) {
+      if (!same(withoutVolatile(current), withoutVolatile(previous))) throw new Error(`Task ${taskId} gateless wrap recovery may only return the wait to active`);
+      continue;
+    }
     const appended = currentEvidence.slice(priorEvidence.length);
     const approved = appended.some((item) => item?.kind === "approval" && item.result === "pass" && item.gate === previous.gate && typeof item.source === "string" && Boolean(item.source.trim()));
     const cancelled = appended.some((item) => item?.kind === "diagnostic" && item.result === "pass" && typeof item.source === "string" && Boolean(item.source.trim()) && typeof item.detail === "string" && item.detail.startsWith(`Cancelled gate wait at ${previous.gate}: `));
-    if (!approved && !cancelled) throw new Error(`Task ${taskId} cannot leave ${previous.gate} without a same-gate approval or audited cancellation record`);
+    const closureExit = (current.status === "closed" || current.status === "superseded") && typeof current.closure?.reason === "string" && Boolean(current.closure.reason.trim()) && typeof current.closure?.source === "string" && Boolean(current.closure.source.trim());
+    const handoffExit = current.status === "paused" && typeof current.handoff?.reason === "string" && Boolean(current.handoff.reason.trim()) && typeof current.handoff?.source === "string" && Boolean(current.handoff.source.trim());
+    if (!approved && !cancelled && !closureExit && !handoffExit) throw new Error(`Task ${taskId} cannot leave ${previous.gate} without a same-gate approval, audited cancellation, or sourced closure/handoff record`);
   }
 };
 const mutationResult = (before, state, index, touchedTaskIds = []) => {
   validateState(state);
+  if (Number(state.schemaVersion) < 4) { state.schemaVersion = 4; state.archive ??= {}; validateState(state); }
   assertStateIntegrity(before, state);
   for (const taskId of touchedTaskIds) {
     const task = state.tasks?.[taskId];
-    if (task?.status === "blocked_on_user" && nextAction(task).classification !== "await_user") throw new Error(`Task ${taskId} cannot enter blocked_on_user before its gate is ready`);
+    if (task?.status === "blocked_on_user" && nextAction(task).classification !== "await_user") throw new Error(`Task ${taskId} cannot enter or hold blocked_on_user unless its gate wait is valid and ready`);
   }
   return { state, index, touchedTaskIds };
 };
@@ -151,7 +178,7 @@ export class PostgresStateRepository {
   }
   async get(workspace) {
     const client = await this.pool.connect();
-    try { await this.#init(client); await client.query("INSERT INTO state_workspaces (workspace, revision, state, task_index, updated_at) VALUES ($1, 0, $2, $3, $4) ON CONFLICT DO NOTHING", [workspace, emptyState(), emptyIndex(0), new Date().toISOString()]); const row = (await client.query("SELECT workspace, revision, state, task_index, updated_at FROM state_workspaces WHERE workspace = $1", [workspace])).rows[0]; return { ...row, revision: Number(row.revision), index: row.task_index }; } finally { client.release(); }
+    try { await this.#init(client); await client.query("INSERT INTO state_workspaces (workspace, revision, state, task_index, updated_at) VALUES ($1, 0, $2, $3, $4) ON CONFLICT DO NOTHING", [workspace, emptyState(), emptyIndex(0), new Date().toISOString()]); const row = (await client.query("SELECT workspace, revision, state, task_index, updated_at FROM state_workspaces WHERE workspace = $1", [workspace])).rows[0]; return { ...row, revision: Number(row.revision), state: upgradeStoredState(row.state), index: row.task_index }; } finally { client.release(); }
   }
   async eventsSince(workspace, cursor = 0) { const client = await this.pool.connect(); try { await this.#init(client); return (await client.query("SELECT id, revision, command, recorded_at FROM state_events WHERE workspace = $1 AND id > $2 ORDER BY id ASC LIMIT 100", [workspace, cursor])).rows.map((row) => ({ cursor: Number(row.id), revision: Number(row.revision), command: row.command, recordedAt: row.recorded_at })); } finally { client.release(); } }
   async apply(workspace, expectedRevision, idempotencyKey, command, clientProjectRoot) {
@@ -162,7 +189,7 @@ export class PostgresStateRepository {
       await this.#init(client); await client.query("BEGIN");
       await client.query("INSERT INTO state_workspaces (workspace, revision, state, task_index, updated_at) VALUES ($1, 0, $2, $3, $4) ON CONFLICT DO NOTHING", [workspace, emptyState(), emptyIndex(0), new Date().toISOString()]);
       const stored = (await client.query("SELECT response FROM state_idempotency WHERE workspace = $1 AND idempotency_key = $2", [workspace, idempotencyKey])).rows[0]; if (stored) { await client.query("COMMIT"); return stored.response; }
-      const row = (await client.query("SELECT workspace, revision, state, task_index, updated_at FROM state_workspaces WHERE workspace = $1 FOR UPDATE", [workspace])).rows[0]; const current = { workspace: row.workspace, revision: Number(row.revision), state: row.state, index: row.task_index, updatedAt: row.updated_at };
+      const row = (await client.query("SELECT workspace, revision, state, task_index, updated_at FROM state_workspaces WHERE workspace = $1 FOR UPDATE", [workspace])).rows[0]; const current = { workspace: row.workspace, revision: Number(row.revision), state: upgradeStoredState(row.state), index: row.task_index, updatedAt: row.updated_at };
       if (current.revision !== expectedRevision) throw new RevisionConflict(current);
       const next = applyCommand(current, command); const revision = current.revision + 1; const updatedAt = new Date().toISOString(); next.index = { ...next.index, sourceRevision: revision, updatedAt }; const nextActions = Object.fromEntries(next.touchedTaskIds.flatMap((taskId) => next.state.tasks?.[taskId] ? [[taskId, nextAction(next.state.tasks[taskId], actionRoot)]] : [])); const response = { workspace, revision, state: next.state, index: next.index, nextActions, updatedAt };
       await client.query("UPDATE state_workspaces SET revision = $1, state = $2, task_index = $3, updated_at = $4 WHERE workspace = $5", [revision, next.state, next.index, updatedAt, workspace]);

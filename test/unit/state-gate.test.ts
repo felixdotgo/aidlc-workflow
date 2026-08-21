@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { approveAndAdvance, checkGate, gateView } from "../../src/gate.js";
 import type { TaskState, WorkflowState } from "../../src/model.js";
-import { acquireStateLock, closeTask, handoffTask, nextAction, recordNoLessons, reopenTask, renderWorkplan, stateLockPath, supersedeTask, transitionTask, validateState } from "../../src/state.js";
+import { acquireStateLock, closeTask, handoffTask, legacyG2WaitSource, nextAction, recordNoLessons, reopenTask, renderWorkplan, stampLegacyG2Waits, stateLockPath, supersedeTask, transitionTask, validateState } from "../../src/state.js";
 
 const task = (): TaskState => ({
   id: "2026-0001-test", title: "Test task", type: "infra", phase: "clarify", gate: "G0_confirm", status: "active", language: "en", risk: "normal",
@@ -264,7 +264,7 @@ test("repair bounds force a durable handoff instead of endless repair loops", ()
   assert.equal(nextAction(current).classification, "run_phase");
 });
 
-test("a persisted ready legacy G2 wait is grandfathered without weakening active repair bounds", () => {
+test("only a migration-stamped legacy G2 wait bypasses the repair bound, and the stamp is consumed on exit", () => {
   const root = mkdtempSync(join(tmpdir(), "aidlc-legacy-g2-"));
   try {
     const current = task(); current.phase = "build"; current.gate = "G2_codereview"; current.status = "blocked_on_user"; current.decisions[0].status = "approved"; current.tasks[0].status = "done";
@@ -281,11 +281,41 @@ test("a persisted ready legacy G2 wait is grandfathered without weakening active
     const active = structuredClone(current); active.status = "active";
     assert.equal(nextAction(active).classification, "blocked");
     assert.ok(checkGate(root, { schemaVersion: 3, tasks: { [active.id]: active }, archive: {} }, active.id, "G2_codereview").some((item) => item.code === "REPAIR_BOUND"));
-    const state: WorkflowState = { schemaVersion: 3, tasks: { [current.id]: current }, archive: {} };
+
+    // An exhausted wait without a migration stamp is no longer exempt: the bound blocks it.
+    const state: WorkflowState = { schemaVersion: 4, tasks: { [current.id]: current }, archive: {} };
+    assert.equal(nextAction(current).classification, "blocked");
+    assert.ok(checkGate(root, state, current.id, "G2_codereview").some((item) => item.code === "REPAIR_BOUND"));
+
+    // The migration stamps only qualifying pre-existing ready waits, deterministically from updatedAt.
+    assert.deepEqual(stampLegacyG2Waits(state), [current.id]);
+    assert.deepEqual(current.legacyG2Wait, { migratedAt: current.updatedAt, source: legacyG2WaitSource });
+    assert.deepEqual(stampLegacyG2Waits(state), []);
+    assert.doesNotThrow(() => validateState(state));
     assert.equal(nextAction(current).classification, "await_user");
     assert.doesNotMatch(checkGate(root, state, current.id, "G2_codereview").map((item) => item.code).join(","), /REPAIR_BOUND/);
     assert.equal(approveAndAdvance(root, state, current.id, "G2_codereview", "legacy human approval").task.phase, "wrap");
+    assert.equal(current.legacyG2Wait, undefined);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("legacy G2 wait markers are schema-v4-only and valid only on a ready G2 wait", () => {
+  const current = task(); current.phase = "build"; current.gate = "G2_codereview"; current.status = "blocked_on_user"; current.decisions[0].status = "approved"; current.tasks[0].status = "done";
+  current.evidence.push(
+    { kind: "approval", gate: "G1_review", source: "human", result: "pass", recordedAt: "2026-01-01T00:00:01.000Z" },
+    { kind: "test", area: "root", source: "test", result: "pass", recordedAt: "2026-01-01T00:00:02.000Z" },
+    { kind: "review", source: "review", result: "pass", recordedAt: "2026-01-01T00:00:03.000Z" }
+  );
+  current.legacyG2Wait = { migratedAt: current.updatedAt, source: legacyG2WaitSource };
+  assert.doesNotThrow(() => validateState({ schemaVersion: 4, tasks: { [current.id]: current }, archive: {} }));
+  assert.throws(() => validateState({ schemaVersion: 3, tasks: { [current.id]: current }, archive: {} }), /require schema v4/);
+  const drifted = structuredClone(current); drifted.status = "active";
+  assert.throws(() => validateState({ schemaVersion: 4, tasks: { [drifted.id]: drifted }, archive: {} }), /Invalid legacy G2 wait marker/);
+  const malformed = structuredClone(current); malformed.legacyG2Wait = { migratedAt: "not-a-date", source: legacyG2WaitSource };
+  assert.throws(() => validateState({ schemaVersion: 4, tasks: { [malformed.id]: malformed }, archive: {} }), /Invalid legacy G2 wait marker/);
+  const state: WorkflowState = { schemaVersion: 4, tasks: { [current.id]: current }, archive: {} };
+  handoffTask(state, current.id, "other", "operator pulled the wait", "user", "2026-01-01T00:00:04.000Z");
+  assert.equal(current.legacyG2Wait, undefined);
 });
 
 test("two failed review passes exhaust the review bound", () => {

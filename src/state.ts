@@ -9,7 +9,8 @@ export const lessonIndexPath = (root: string): string => join(resolve(root), ".a
 export const memoryRegistryPath = (root: string): string => join(resolve(root), ".agents/data/memory/agentic-memory.json");
 export const stateLockPath = (root: string): string => join(resolve(root), ".agents/data/state/.aidlc-state.lock");
 const stateLockGuardPath = (root: string): string => join(resolve(root), ".agents/data/state/.aidlc-state.lock.guard");
-export const emptyState = (): WorkflowState => ({ schemaVersion: 3, tasks: {}, archive: {} });
+export const emptyState = (): WorkflowState => ({ schemaVersion: 4, tasks: {}, archive: {} });
+export const legacyG2WaitSource = "schema-v4-migration";
 export const emptyMemoryRegistry = (): AgenticMemoryRegistry => ({ schemaVersion: 1, entries: [], retired: [] });
 
 const phases: Phase[] = ["clarify", "plan", "build", "wrap", "done"];
@@ -215,6 +216,7 @@ const validateTask = (id: string, task: TaskState): void => {
   }
   if (task.lessonDisposition && (!["captured", "none"].includes(task.lessonDisposition.status) || !text(task.lessonDisposition.source) || !iso(task.lessonDisposition.recordedAt) || (task.lessonDisposition.status === "captured" && !(task.lessons?.length)) || (task.lessonDisposition.status === "none" && (Boolean(task.lessons?.length) || !text(task.lessonDisposition.reason))))) throw new Error(`Invalid lesson disposition: ${id}`);
   if (task.handoff && (!handoffKinds.includes(task.handoff.kind) || !text(task.handoff.reason) || !text(task.handoff.source) || !iso(task.handoff.recordedAt) || task.status !== "paused")) throw new Error(`Invalid task handoff: ${id}`);
+  if (task.legacyG2Wait !== undefined && (typeof task.legacyG2Wait !== "object" || Array.isArray(task.legacyG2Wait) || !iso(task.legacyG2Wait.migratedAt) || !text(task.legacyG2Wait.source) || task.phase !== "build" || task.gate !== "G2_codereview" || task.status !== "blocked_on_user")) throw new Error(`Invalid legacy G2 wait marker: ${id}`);
   if ((task.status === "closed" || task.status === "superseded") !== Boolean(task.closure)) throw new Error(`Invalid task closure: ${id}`);
   if (task.closure && (!text(task.closure.reason) || !text(task.closure.source) || !iso(task.closure.recordedAt))) throw new Error(`Invalid task closure: ${id}`);
   if ((task.status === "superseded") !== Boolean(task.successorTaskId) || (task.status === "closed" && task.successorTaskId)) throw new Error(`Invalid task successor: ${id}`);
@@ -233,9 +235,10 @@ const validateArchiveSummary = (id: string, item: ArchivedTaskSummary): void => 
 export const validateState = (value: unknown): WorkflowState => {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Workflow state must be an object");
   const state = value as Partial<WorkflowState>;
-  if (![1, 2, 3].includes(Number(state.schemaVersion)) || !state.tasks || typeof state.tasks !== "object" || Array.isArray(state.tasks)) throw new Error("Unsupported workflow state schema");
-  if (Number(state.schemaVersion) === 3 && (!state.archive || typeof state.archive !== "object" || Array.isArray(state.archive))) throw new Error("Schema v3 requires an archive catalog");
+  if (![1, 2, 3, 4].includes(Number(state.schemaVersion)) || !state.tasks || typeof state.tasks !== "object" || Array.isArray(state.tasks)) throw new Error("Unsupported workflow state schema");
+  if (Number(state.schemaVersion) >= 3 && (!state.archive || typeof state.archive !== "object" || Array.isArray(state.archive))) throw new Error("Schema v3+ requires an archive catalog");
   if (Number(state.schemaVersion) < 3 && state.archive !== undefined) throw new Error("Legacy workflow state cannot contain an archive catalog");
+  if (Number(state.schemaVersion) < 4 && Object.values(state.tasks).some((task) => task?.legacyG2Wait !== undefined)) throw new Error("Legacy G2 wait markers require schema v4");
   for (const [id, task] of Object.entries(state.tasks)) validateTask(id, task);
   for (const [id, item] of Object.entries(state.archive ?? {})) {
     if (state.tasks[id]) throw new Error(`Task exists in active and archive state: ${id}`);
@@ -279,9 +282,22 @@ const archivedSummary = (task: TaskState, content = taskRecordContent(task)): Ar
   updatedAt: task.updatedAt
 });
 
-export const prepareV3Migration = (value: WorkflowState): { state: WorkflowState; records: Array<{ path: string; content: string }>; lessonIndex: LessonIndex } => {
+/** Marks pre-existing ready G2 waits during migration; the marker is the only exemption from repair-bound enforcement. */
+export const stampLegacyG2Waits = (state: WorkflowState): string[] => {
+  const stamped: string[] = [];
+  for (const task of Object.values(state.tasks)) {
+    if (task.legacyG2Wait !== undefined) continue;
+    if (task.phase !== "build" || task.gate !== "G2_codereview" || task.status !== "blocked_on_user") continue;
+    if (!task.tasks.every((item) => item.status === "done" || item.status === "deferred") || !hasVerification(task) || !hasReview(task)) continue;
+    task.legacyG2Wait = { migratedAt: task.updatedAt, source: legacyG2WaitSource };
+    stamped.push(task.id);
+  }
+  return stamped;
+};
+
+export const prepareV4Migration = (value: WorkflowState): { state: WorkflowState; records: Array<{ path: string; content: string }>; lessonIndex: LessonIndex; stamped: string[] } => {
   const source = validateState(value);
-  const next: WorkflowState = { schemaVersion: 3, tasks: {}, archive: {} };
+  const next: WorkflowState = { schemaVersion: 4, tasks: {}, archive: {} };
   const records: Array<{ path: string; content: string }> = [];
   for (const task of Object.values(source.tasks)) {
     if (!terminal(task)) next.tasks[task.id] = task;
@@ -292,14 +308,15 @@ export const prepareV3Migration = (value: WorkflowState): { state: WorkflowState
     }
   }
   for (const item of Object.values(source.archive ?? {})) next.archive![item.id] = item;
+  const stamped = Number(source.schemaVersion) < 4 ? stampLegacyG2Waits(next) : [];
   validateState(next);
   const lessons = Object.values(source.tasks).flatMap((task) => task.lessons ?? []);
-  return { state: next, records, lessonIndex: createLessonIndex(lessons, lessonStateDigest(next)) };
+  return { state: next, records, lessonIndex: createLessonIndex(lessons, lessonStateDigest(next)), stamped };
 };
 
-export const migrateState = (root: string, state = loadState(root)): { migrated: boolean; archived: string[] } => {
-  if (state.schemaVersion === 3) return { migrated: false, archived: [] };
-  const migration = prepareV3Migration(state);
+export const migrateState = (root: string, state = loadState(root)): { migrated: boolean; archived: string[]; stamped: string[] } => {
+  if (state.schemaVersion === 4) return { migrated: false, archived: [], stamped: [] };
+  const migration = prepareV4Migration(state);
   for (const record of migration.records) {
     assertNoSymlinkPath(root, record.path);
     const path = join(resolve(root), record.path);
@@ -309,7 +326,7 @@ export const migrateState = (root: string, state = loadState(root)): { migrated:
   }
   saveState(root, migration.state);
   rebuildLessonIndex(root, migration.state);
-  return { migrated: true, archived: Object.keys(migration.state.archive ?? {}) };
+  return { migrated: true, archived: Object.keys(migration.state.archive ?? {}), stamped: migration.stamped };
 };
 
 export const loadState = (root: string): WorkflowState => {
@@ -337,7 +354,7 @@ export const saveState = (root: string, state: WorkflowState): string[] => {
   const normalized = validateState(structuredClone(state));
   const persisted = existsSync(statePath(root)) ? loadState(root) : undefined;
   const archived: string[] = [];
-  if (normalized.schemaVersion === 3) {
+  if (normalized.schemaVersion >= 3) {
     normalized.archive ??= {};
     for (const task of Object.values(normalized.tasks)) if (terminal(task)) {
       const content = taskRecordContent(task);
@@ -419,7 +436,8 @@ export const repairBounds = (task: TaskState): RepairBounds => {
   return { verifyFailures, reviewFailures, exhaustedAreas, verifyExhausted: exhaustedAreas.length > 0, reviewExhausted: reviewFailures >= 2 };
 };
 
-export const isGrandfatheredG2Wait = (task: TaskState): boolean => task.phase === "build" && task.gate === "G2_codereview" && task.status === "blocked_on_user" && task.tasks.every((item) => item.status === "done" || item.status === "deferred") && hasVerification(task) && hasReview(task);
+/** True only for a migration-stamped legacy G2 wait that is still fully ready; the stamp is written exclusively by schema migration. */
+export const isLegacyG2Wait = (task: TaskState): boolean => task.legacyG2Wait !== undefined && task.phase === "build" && task.gate === "G2_codereview" && task.status === "blocked_on_user" && task.tasks.every((item) => item.status === "done" || item.status === "deferred") && hasVerification(task) && hasReview(task);
 
 export const transitionDiagnostics = (task: TaskState, target: Phase): Diagnostic[] => {
   const diagnostics: Diagnostic[] = [];
@@ -448,6 +466,7 @@ export const transitionTask = (state: WorkflowState, id: string, target: Phase):
   task.phase = target;
   task.gate = phaseGate(target);
   task.status = target === "done" ? "done" : "active";
+  delete task.legacyG2Wait;
   task.updatedAt = new Date().toISOString();
   return task;
 };
@@ -477,7 +496,7 @@ export const nextAction = (task: TaskState, root?: string): NextAction => {
     { id: "close", command: `${stateCommand} task close ${task.id} --reason <reason> --source <explicit-user-request>${rootSuffix}` }
   ] };
   if (task.status === "paused") return { classification: "blocked", phase: task.phase, gate: task.gate, reason: "Task is paused", actions: [{ id: "resume", command: `${stateCommand} task status ${task.id} --status active${rootSuffix}` }, { id: "record_handoff", command: `${stateCommand} task handoff ${task.id} --kind <kind> --reason <reason> --source <source>${rootSuffix}` }] };
-  if (task.phase === "build" && !isGrandfatheredG2Wait(task)) { const bounds = repairBounds(task); if (bounds.verifyExhausted || bounds.reviewExhausted) { const kind = bounds.reviewExhausted ? "review_exhausted" : "repair_exhausted"; return { classification: "blocked", phase: task.phase, gate: task.gate, reason: `Repair bound exhausted (${bounds.verifyExhausted ? `3+ failed verify cycles in: ${bounds.exhaustedAreas.join(", ")}` : `${bounds.reviewFailures} failed review passes`}); record a durable handoff`, actions: [{ id: "record_handoff", command: `${stateCommand} task handoff ${task.id} --kind ${kind} --reason <summary-of-exhausted-repairs> --source <agent>${rootSuffix}` }] }; } }
+  if (task.phase === "build" && !isLegacyG2Wait(task)) { const bounds = repairBounds(task); if (bounds.verifyExhausted || bounds.reviewExhausted) { const kind = bounds.reviewExhausted ? "review_exhausted" : "repair_exhausted"; return { classification: "blocked", phase: task.phase, gate: task.gate, reason: `Repair bound exhausted (${bounds.verifyExhausted ? `3+ failed verify cycles in: ${bounds.exhaustedAreas.join(", ")}` : `${bounds.reviewFailures} failed review passes`}); record a durable handoff`, actions: [{ id: "record_handoff", command: `${stateCommand} task handoff ${task.id} --kind ${kind} --reason <summary-of-exhausted-repairs> --source <agent>${rootSuffix}` }] }; } }
   if (task.status === "blocked_on_user" && task.gate === "G1_review" && task.decisions.some((decision) => decision.status === "unresolved")) return { classification: "run_phase", phase: task.phase, gate: task.gate, command: `${contextCommand} ${task.id} --phase plan${rootSuffix}`, reason: "Invalid premature G1 wait; resolve every decision before presenting G1" };
   if (task.status === "blocked_on_user" && task.gate === "G2_codereview" && (task.tasks.some((item) => !["done", "deferred"].includes(item.status)) || !hasVerification(task) || !hasReview(task))) {
     const open = task.tasks.filter((item) => item.status === "in_progress" || item.status === "todo");
@@ -501,13 +520,13 @@ const audited = (reason: string, source: string): void => { if (!text(reason) ||
 export const handoffTask = (state: WorkflowState, id: string, kind: HandoffKind, reason: string, source: string, recordedAt = new Date().toISOString()): TaskState => {
   const task = state.tasks[id]; if (!task || terminal(task) || !handoffKinds.includes(kind)) throw new Error(`Task cannot enter handoff: ${id}`); audited(reason, source);
   if (task.handoff) { if (task.handoff.kind === kind && task.handoff.reason === reason && task.handoff.source === source) return task; throw new Error(`Task already has a different handoff: ${id}`); }
-  task.status = "paused"; task.handoff = { kind, reason, source, recordedAt }; task.updatedAt = recordedAt; return task;
+  task.status = "paused"; task.handoff = { kind, reason, source, recordedAt }; delete task.legacyG2Wait; task.updatedAt = recordedAt; return task;
 };
 
 export const closeTask = (state: WorkflowState, id: string, reason: string, source: string, recordedAt = new Date().toISOString()): TaskState => {
   const task = state.tasks[id]; if (!task || task.status === "done" || task.status === "superseded") throw new Error(`Task cannot be closed: ${id}`); audited(reason, source);
   if (task.status === "closed") { if (task.closure?.reason === reason && task.closure.source === source) return task; throw new Error(`Task is already closed with different metadata: ${id}`); }
-  task.status = "closed"; task.closure = { reason, source, recordedAt }; delete task.handoff; delete task.successorTaskId; task.updatedAt = recordedAt; return task;
+  task.status = "closed"; task.closure = { reason, source, recordedAt }; delete task.handoff; delete task.successorTaskId; delete task.legacyG2Wait; task.updatedAt = recordedAt; return task;
 };
 
 export const supersedeTask = (state: WorkflowState, id: string, successorId: string, reason: string, source: string, recordedAt = new Date().toISOString()): TaskState => {
@@ -515,7 +534,7 @@ export const supersedeTask = (state: WorkflowState, id: string, successorId: str
   if (!task || task.status === "done" || task.status === "closed" || !successor || id === successorId) throw new Error(`Task cannot be superseded: ${id}`);
   if (task.status === "superseded") { if (task.successorTaskId === successorId && task.closure?.reason === reason && task.closure.source === source) return task; throw new Error(`Task is already superseded with different metadata: ${id}`); }
   if (successor.phase !== "clarify" || successor.gate !== "G0_confirm" || terminal(successor) || hasApproval(successor, "G0_confirm") || (successor.predecessorTaskId && successor.predecessorTaskId !== id)) throw new Error(`Successor must be a fresh pre-G0 task: ${successorId}`);
-  task.status = "superseded"; task.closure = { reason, source, recordedAt }; task.successorTaskId = successorId; delete task.handoff; task.updatedAt = recordedAt;
+  task.status = "superseded"; task.closure = { reason, source, recordedAt }; task.successorTaskId = successorId; delete task.handoff; delete task.legacyG2Wait; task.updatedAt = recordedAt;
   successor.predecessorTaskId = id; successor.updatedAt = recordedAt; validateState(state); return task;
 };
 

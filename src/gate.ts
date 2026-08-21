@@ -1,12 +1,25 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
 import type { Diagnostic, Gate, TaskState, WorkflowState } from "./model.js";
-import { hasAreaVerification, hasReview, isGrandfatheredG2Wait, nextAction, repairBounds, transitionDiagnostics, transitionTask } from "./state.js";
+import { resolveProjectPathWithoutSymlinks } from "./project-path.js";
+import { hasAreaVerification, hasReview, isLegacyG2Wait, nextAction, repairBounds, transitionDiagnostics, transitionTask } from "./state.js";
+
+const safeArtifactTarget = (root: string, path: string): string => resolveProjectPathWithoutSymlinks(root, path, "Unsafe artifact path", "Artifact path crosses a symlink");
+const artifactContent = (root: string, path: string | undefined): string | undefined => {
+  if (!path) return undefined;
+  try {
+    const target = safeArtifactTarget(root, path);
+    return existsSync(target) ? readFileSync(target, "utf8") : undefined;
+  } catch { return undefined; }
+};
 
 const artifactDiagnostics = (root: string, task: TaskState, names: Array<keyof TaskState["artifacts"]>): Diagnostic[] => names.flatMap((name) => {
   const path = task.artifacts[name];
   if (!path) return [{ level: "ERROR", code: "ARTIFACT_REFERENCE", message: `${String(name)} artifact is not referenced` } satisfies Diagnostic];
-  return existsSync(join(resolve(root), path)) ? [] : [{ level: "ERROR", code: "ARTIFACT_MISSING", message: `${path} does not exist` } satisfies Diagnostic];
+  try {
+    return existsSync(safeArtifactTarget(root, path)) ? [] : [{ level: "ERROR", code: "ARTIFACT_MISSING", message: `${path} does not exist` } satisfies Diagnostic];
+  } catch (error) {
+    return [{ level: "ERROR", code: "ARTIFACT_UNSAFE", message: error instanceof Error ? error.message : String(error) } satisfies Diagnostic];
+  }
 });
 
 export const checkGate = (root: string, state: WorkflowState, taskId: string, gate: Gate): Diagnostic[] => {
@@ -20,14 +33,14 @@ export const checkGate = (root: string, state: WorkflowState, taskId: string, ga
   if (!task.title.trim() || !task.areas.length) diagnostics.push({ level: "ERROR", code: "TASK_FIELDS", message: "Task title and affected areas are required" });
   if (gate === "G0_confirm") {
     diagnostics.push(...artifactDiagnostics(root, task, ["intent"]));
-    const path = task.artifacts.intent && join(resolve(root), task.artifacts.intent);
-    if (path && existsSync(path)) for (const heading of ["## 📋 Problem", "## 🗺️ Affected areas", "## 💭 Assumptions", "## ❓ Open questions", "## 🎯 Scope"]) if (!readFileSync(path, "utf8").includes(heading)) diagnostics.push({ level: "ERROR", code: "INTENT_HEADING", message: `Intent is missing ${heading}` });
+    const content = artifactContent(root, task.artifacts.intent);
+    if (content !== undefined) for (const heading of ["## 📋 Problem", "## 🗺️ Affected areas", "## 💭 Assumptions", "## ❓ Open questions", "## 🎯 Scope"]) if (!content.includes(heading)) diagnostics.push({ level: "ERROR", code: "INTENT_HEADING", message: `Intent is missing ${heading}` });
   }
   if (gate === "G1_review") {
     diagnostics.push(...artifactDiagnostics(root, task, ["intent", "design", "workplan"]));
     diagnostics.push(...transitionDiagnostics(task, "build").filter((item) => item.code === "UNRESOLVED_DECISION"));
-    const path = task.artifacts.design && join(resolve(root), task.artifacts.design);
-    if (path && existsSync(path)) for (const heading of ["## 🧩 Solution per affected area", "## 📌 Spec traceability", "## 🔗 Cross-service contracts", "## ⚠️ Risks / edge cases"]) if (!readFileSync(path, "utf8").includes(heading)) diagnostics.push({ level: "ERROR", code: "DESIGN_HEADING", message: `Design is missing ${heading}` });
+    const content = artifactContent(root, task.artifacts.design);
+    if (content !== undefined) for (const heading of ["## 🧩 Solution per affected area", "## 📌 Spec traceability", "## 🔗 Cross-service contracts", "## ⚠️ Risks / edge cases"]) if (!content.includes(heading)) diagnostics.push({ level: "ERROR", code: "DESIGN_HEADING", message: `Design is missing ${heading}` });
   }
   if (gate === "G2_codereview") {
     diagnostics.push(...artifactDiagnostics(root, task, ["intent", "design", "workplan"]));
@@ -35,7 +48,7 @@ export const checkGate = (root: string, state: WorkflowState, taskId: string, ga
     for (const area of task.areas) if (!hasAreaVerification(task, area)) diagnostics.push({ level: "ERROR", code: "VERIFY_EVIDENCE", message: `Latest post-G1 verification evidence must pass for affected area: ${area}` });
     if (!hasReview(task)) diagnostics.push({ level: "ERROR", code: "REVIEW_EVIDENCE", message: "Latest post-G1 review evidence must pass" });
     const bounds = repairBounds(task);
-    if (!isGrandfatheredG2Wait(task) && (bounds.verifyExhausted || bounds.reviewExhausted)) diagnostics.push({ level: "ERROR", code: "REPAIR_BOUND", message: "Repair bound exhausted; record a durable handoff instead of presenting G2" });
+    if (!isLegacyG2Wait(task) && (bounds.verifyExhausted || bounds.reviewExhausted)) diagnostics.push({ level: "ERROR", code: "REPAIR_BOUND", message: "Repair bound exhausted; record a durable handoff instead of presenting G2" });
   }
   if (!diagnostics.length) diagnostics.push({ level: "INFO", code: "GATE_OK", message: `${gate} checks passed for ${taskId}` });
   return diagnostics;

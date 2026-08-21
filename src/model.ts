@@ -140,6 +140,7 @@ export interface TaskState {
   lessonDisposition?: LessonDisposition;
   handoff?: { kind: HandoffKind; reason: string; source: string; recordedAt: string };
   closure?: { reason: string; source: string; recordedAt: string };
+  legacyG2Wait?: { migratedAt: string; source: string };
   predecessorTaskId?: string;
   successorTaskId?: string;
   createdAt: string;
@@ -147,7 +148,7 @@ export interface TaskState {
 }
 
 export interface WorkflowState {
-  schemaVersion: 1 | 2 | 3;
+  schemaVersion: 1 | 2 | 3 | 4;
   tasks: Record<string, TaskState>;
   archive?: Record<string, ArchivedTaskSummary>;
 }

@@ -25,7 +25,7 @@ test("packed tarball initializes a clean local project without a registry instal
     const init = spawnSync(process.execPath, [join(extracted, "package", "dist", "src", "cli.js"), "init", project, "--agent", "codex", "--yes"], { cwd: root, encoding: "utf8" });
     assert.equal(init.status, 0, init.stderr);
     assert.ok(existsSync(join(project, ".agents", "aidlc", "orchestrator.md")));
-    assert.equal(JSON.parse(readFileSync(join(project, ".agents", "data", "state", "aidlc-state.json"), "utf8")).schemaVersion, 3);
+    assert.equal(JSON.parse(readFileSync(join(project, ".agents", "data", "state", "aidlc-state.json"), "utf8")).schemaVersion, 4);
     assert.ok(existsSync(join(project, ".agents", "data", "lessons", "index.json")));
     assert.ok(existsSync(join(project, ".agents", "aidlc", "scripts", "gate-view.mjs")));
     const cli = join(extracted, "package", "dist", "src", "cli.js");

@@ -133,6 +133,7 @@ if (group === "state" && action === "migrate") {
     const errors = checkGate(root, state, id, task.gate).filter((item) => item.level === "ERROR");
     if (errors.length) throw new Error(`Gate is not ready: ${errors.map((item) => `${item.code}: ${item.message}`).join("; ")}`);
   }
+  if (leavingGateWait) delete task.legacyG2Wait;
   task.status = status; task.updatedAt = now(); persist([task]); respond(task);
 } else if (group === "task" && action === "item") {
   const itemId = args[3]; const task = state.tasks[id]; const status = option(parsed, "--status");
