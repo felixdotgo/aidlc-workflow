@@ -62,7 +62,6 @@ export interface ProjectConfig {
   risk: { default: RiskLevel };
   context: { maxChars: number };
   agentState: Partial<Record<AgentId, StateMutationMode>>;
-  gates: { G1: { autoPass: { enabled: boolean } } };
   tracker?: TrackerConfig;
   mcp: McpConfig;
 }

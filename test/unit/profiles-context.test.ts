@@ -12,6 +12,10 @@ const task: TaskState = {
   artifacts: {}, decisions: [{ id: "D", label: "Keep invariant", status: "approved" }], tasks: [], evidence: [], createdAt: "x", updatedAt: "x"
 };
 
+test("default configuration exposes no gate auto-pass surface", () => {
+  assert.equal("gates" in defaultConfig(), false);
+});
+
 test("config and profiles are dependency-free, composable, and traversal-safe", () => {
   const root = mkdtempSync(join(tmpdir(), "aidlc-profile-"));
   try {

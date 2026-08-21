@@ -1,6 +1,6 @@
 ---
 name: aidlc-plan
-description: "AI-DLC phase 2 (Gate G1): after intent is confirmed, run a parallel discovery fan-out (specs + code via subagents/codegraph), then produce a detailed design, a per-submodule task breakdown, and a review checklist. Triggers when the AI-DLC Orchestrator routes an confirmed (post-G0) task to planning. Ends by STOPPING for the user to tick the review checklist (G1)."
+description: "AI-DLC phase 2 (Gate G1): after intent is confirmed, run bounded discovery, then produce a detailed design, canonical decisions, and a per-submodule workplan. Triggers when the AI-DLC Orchestrator routes a confirmed post-G0 task to planning. Ends at the executable G1 plan review for explicit user approval."
 ---
 
 # AI-DLC · Plan (Gate G1) — adapter

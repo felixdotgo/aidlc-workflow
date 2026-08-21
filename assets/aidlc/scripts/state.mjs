@@ -30,7 +30,7 @@ const schemas = {
   "lesson rebuild": { minPositionals: 2 },
   "lesson search": { minPositionals: 2, valueOptions: ["--query", "--area", "--limit"] },
   "memory list": { minPositionals: 2 },
-  "memory promote": { minPositionals: 3, valueOptions: ["--summary", "--guidance", "--area", "--phase", "--priority", "--source-task", "--source-lesson", "--approved-by"], requiredOptions: ["--summary", "--guidance"] },
+  "memory promote": { minPositionals: 3, valueOptions: ["--summary", "--guidance", "--area", "--phase", "--priority", "--source-task", "--source-lesson", "--approved-by"], requiredOptions: ["--summary", "--guidance", "--source-task", "--source-lesson", "--approved-by"] },
   "memory retire": { minPositionals: 3, valueOptions: ["--reason", "--approved-by"], requiredOptions: ["--reason", "--approved-by"] },
   "gate approve": { minPositionals: 3, valueOptions: ["--gate", "--source"], requiredOptions: ["--gate", "--source"] }
 };
@@ -121,7 +121,9 @@ if (group === "state" && action === "migrate") {
 } else if (group === "task" && action === "status") {
   const task = state.tasks[id]; const status = option(parsed, "--status");
   if (!task || !["active", "blocked_on_user", "paused"].includes(status)) throw new Error("task status requires an active task id and --status active|blocked_on_user|paused; finishing a task uses task transition --to done or task archive");
-  if (task.status === "blocked_on_user" && status === "active") {
+  const leavingGateWait = task.status === "blocked_on_user" && status !== "blocked_on_user";
+  const recoveringGatelessWrap = leavingGateWait && task.phase === "wrap" && task.gate === "none" && status === "active";
+  if (leavingGateWait && !recoveringGatelessWrap) {
     const mode = option(parsed, "--mode"); const reason = option(parsed, "--reason"); const cancelSource = option(parsed, "--source");
     if (mode !== "audited" || !reason?.trim() || !cancelSource?.trim()) throw new Error("Cancelling a human-gate wait requires --mode audited, --reason, and --source (e.g. the user's rejection message)");
     task.evidence.push({ kind: "diagnostic", result: "pass", source: cancelSource, detail: `Cancelled gate wait at ${task.gate}: ${reason}`, recordedAt: now() });
@@ -149,7 +151,10 @@ if (group === "state" && action === "migrate") {
 } else if (group === "evidence" && action === "add") {
   const task = state.tasks[id]; const kind = option(parsed, "--kind"); const result = option(parsed, "--result");
   if (!task || !["spec", "test", "lint", "review", "diagnostic"].includes(kind) || !["pass", "fail", "skip"].includes(result)) throw new Error("evidence add requires active task id, non-approval --kind, and valid --result; approvals use gate approve");
-  task.evidence.push({ kind, gate: option(parsed, "--gate"), area: option(parsed, "--area"), result, source: option(parsed, "--source") ?? "local Node.js script", detail: option(parsed, "--detail"), recordedAt: now() });
+  const area = option(parsed, "--area");
+  if (area && !task.areas.includes(area)) throw new Error(`Evidence area must belong to task.areas: ${area}`);
+  if (["test", "lint"].includes(kind) && task.areas.length > 1 && !area) throw new Error("Test and lint evidence for multi-area tasks requires --area");
+  task.evidence.push({ kind, gate: option(parsed, "--gate"), area, result, source: option(parsed, "--source") ?? "local Node.js script", detail: option(parsed, "--detail"), recordedAt: now() });
   task.updatedAt = now(); persist([task]); respond(task);
 } else if (group === "lesson" && action === "record") {
   const lessonId = args[3]; const task = state.tasks[id];

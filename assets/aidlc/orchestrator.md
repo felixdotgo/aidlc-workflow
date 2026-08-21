@@ -25,7 +25,7 @@ Read-only questions remain off-workflow and do not create state. Multiple tasks 
 - `G1_review`: the user resolves every design decision and approves the plan.
 - `G2_codereview`: verification and adversarial review have run; the user reviews the code.
 
-Before presenting a gate, run `node .agents/aidlc/scripts/gate-check.mjs <task-id> --gate <gate>`, then render `node .agents/aidlc/scripts/gate-view.mjs <task-id>` and relay that output verbatim. Structural errors must be fixed. If G2 cannot pass or a repair bound is exhausted, record diagnostic evidence and use `task handoff`; do not set `blocked_on_user` or suggest gate approval. Semantic fidelity remains an LLM/human responsibility. Never mark work complete without executable evidence.
+Before presenting a gate, run `node .agents/aidlc/scripts/gate-check.mjs <task-id> --gate <gate>`, set the validated wait with `node .agents/aidlc/scripts/state.mjs task status <task-id> --status blocked_on_user`, render the task artifact when the phase requires it, then run `node .agents/aidlc/scripts/gate-view.mjs <task-id>` and relay that output verbatim. Structural errors must be fixed. If G2 cannot pass or a repair bound is exhausted, record diagnostic evidence and use `task handoff`; do not set `blocked_on_user` or suggest gate approval. Semantic fidelity remains an LLM/human responsibility. Never mark work complete without executable evidence.
 
 Transitions are enforced by the state machine. A gate may not be skipped, and unresolved decisions block build. G2 always requires human approval.
 
@@ -39,7 +39,7 @@ Transitions are enforced by the state machine. A gate may not be skipped, and un
 - Repair bounds (three verify cycles per area, two review passes) are machine-enforced from evidence: the bound hit flips `nextAction` to `blocked` and closes G2 with a `REPAIR_BOUND` error. Follow the returned handoff command and escalate with evidence.
 - Structural changes discovered during build reopen G1.
 
-Economy models use the same gates and executable checks. They receive smaller context packets; they do not receive weaker quality rules. Escalate to a stronger model or human for security, migrations, cross-service contracts, ambiguous specs, or exhausted repair bounds.
+Economy models use the same bounded packet contract, gates, executable checks, and quality rules. Escalate to a stronger model or human for security, migrations, cross-service contracts, ambiguous specs, or exhausted repair bounds.
 
 ## Customization layers
 

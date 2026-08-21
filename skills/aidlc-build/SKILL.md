@@ -1,6 +1,6 @@
 ---
 name: aidlc-build
-description: "AI-DLC phase 3 (Gate G2): after the review checklist is fully approved, implement the task per submodule, run the narrowest tests/lint, then run code-review. Triggers when the AI-DLC Orchestrator routes an approved (post-G1) task to build. Ends by STOPPING for the user to review the code (G2)."
+description: "AI-DLC phase 3 (Gate G2): after explicit G1 plan approval, implement the canonical work items, run the narrowest tests/lint, then run code-review. Triggers when the AI-DLC Orchestrator routes an approved post-G1 task to build. Ends at G2 for explicit user code review."
 ---
 
 # AI-DLC · Build (Gate G2) — adapter

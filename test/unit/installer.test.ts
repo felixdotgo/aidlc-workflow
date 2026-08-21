@@ -142,9 +142,19 @@ test("official adapters carry the human-only upgrade boundary", () => {
     assert.match(file.content, /Never invent/);
     assert.match(file.content, /task-next\.mjs <task-id> --require-stop/);
     assert.match(file.content, /item.*progress/i);
+    if (file.path === "AGENTS.md" || file.path === "CLAUDE.md") {
+      const gateCheck = file.content.indexOf("gate-check.mjs");
+      const blockedWait = file.content.indexOf("blocked_on_user", gateCheck);
+      const gateView = file.content.indexOf("gate-view.mjs", blockedWait);
+      assert.ok(gateCheck >= 0 && blockedWait > gateCheck && gateView > blockedWait);
+      assert.match(file.content, /--source` provenance/);
+      assert.match(file.content, /does not authenticate authorship/);
+      assert.ok(file.content.split("\n").length > 20);
+    }
   }
   assert.deepEqual(adapters.map((adapter) => adapter.id), ["claude", "codex"]);
   for (const file of adapters.find((adapter) => adapter.id === "claude")?.files() ?? []) if (file.path.includes(".claude/skills/")) assert.match(file.content, /allowed-tools: Bash\(node \.agents\/aidlc\/scripts\/\*\)/);
+  for (const skill of ["skills/aidlc-plan/SKILL.md", "skills/aidlc-build/SKILL.md"]) assert.doesNotMatch(readFileSync(resolve(skill), "utf8"), /review checklist/i);
 });
 
 test("re-init refreshes owned assets while preserving project config and state", () => {

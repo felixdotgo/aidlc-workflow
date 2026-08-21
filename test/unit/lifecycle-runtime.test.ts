@@ -34,6 +34,9 @@ test("installed lifecycle CLI parses strictly and resolves one canonical project
   const outside = mkdtempSync(join(tmpdir(), "aidlc-runtime-outside-"));
   try {
     applyPlan(root, planInit(options(root)));
+    const incompletePromotion = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "memory", "promote", "missing-provenance", "--summary", "x", "--guidance", "y"], { cwd: root, encoding: "utf8" });
+    assert.notEqual(incompletePromotion.status, 0);
+    assert.match(incompletePromotion.stderr, /--source-task/);
     const id = "2026-strict-argv";
     run(root, "state.mjs", ["--title=Strict argv", "--area=root", "task", "create", id]);
     const taskDir = join(root, ".agents/data/tasks", id);
@@ -76,6 +79,14 @@ test("installed lifecycle CLI parses strictly and resolves one canonical project
     run(root, "state.mjs", ["task", "create", nestedId, "--title", "Nested root"], nested);
     assert.equal(JSON.parse(run(root, "state.mjs", ["task", "show", nestedId])).result.id, nestedId);
     assert.equal(existsSync(join(nested, ".agents")), false);
+
+    const multiAreaId = "2026-multi-area";
+    run(root, "state.mjs", ["task", "create", multiAreaId, "--title", "Multi area", "--area", "root,docs"]);
+    const missingArea = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "evidence", "add", multiAreaId, "--kind", "test", "--result", "fail"], { cwd: root, encoding: "utf8" });
+    assert.notEqual(missingArea.status, 0); assert.match(missingArea.stderr, /requires --area/);
+    const unknownArea = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "evidence", "add", multiAreaId, "--kind", "test", "--area", "root-2", "--result", "fail"], { cwd: root, encoding: "utf8" });
+    assert.notEqual(unknownArea.status, 0); assert.match(unknownArea.stderr, /must belong to task\.areas/);
+    assert.equal(JSON.parse(run(root, "state.mjs", ["task", "show", multiAreaId])).result.evidence.length, 0);
 
     assert.match(run(root, "task-next.mjs", ["--root", root, id], outside), /run_phase|await_user/);
     const noMarker = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "task", "create", "bad-root", "--title", "x"], { cwd: outside, encoding: "utf8" });
@@ -141,6 +152,13 @@ test("installed local scripts drive the lifecycle without an aidlc executable or
     run(root, "state.mjs", ["evidence", "add", id, "--kind", "test", "--area", "root", "--result", "pass", "--source", "repaired test"]);
     const prepared = JSON.parse(run(root, "state.mjs", ["task", "status", id, "--status", "blocked_on_user"]));
     assert.equal(prepared.nextAction.classification, "await_user");
+    const pauseWait = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "task", "status", id, "--status", "paused"], { cwd: root, encoding: "utf8" });
+    assert.notEqual(pauseWait.status, 0); assert.match(pauseWait.stderr, /--mode audited/);
+    const auditedPause = JSON.parse(run(root, "state.mjs", ["task", "status", id, "--status", "paused", "--mode", "audited", "--reason", "pause for user changes", "--source", "user pause request"]));
+    assert.equal(auditedPause.nextAction.classification, "blocked");
+    assert.match(run(root, "state.mjs", ["task", "show", id]), /Cancelled gate wait at G2_codereview: pause for user changes/);
+    run(root, "state.mjs", ["task", "status", id, "--status", "active"]);
+    run(root, "state.mjs", ["task", "status", id, "--status", "blocked_on_user"]);
     const cancelWait = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "task", "status", id, "--status", "active"], { cwd: root, encoding: "utf8" });
     assert.notEqual(cancelWait.status, 0); assert.match(cancelWait.stderr, /--mode audited/);
     const auditedCancel = JSON.parse(run(root, "state.mjs", ["task", "status", id, "--status", "active", "--mode", "audited", "--reason", "user requested changes", "--source", "user rejection message"]));
@@ -240,6 +258,28 @@ test("installed entry scripts fail with a one-line JSON envelope and typed exit 
     assert.notEqual(caseCollision.status, 0); assert.match(caseCollision.stderr, /collides case-insensitively/);
     const doneStatus = spawnSync(process.execPath, [script("state.mjs"), "task", "status", "case-task", "--status", "done"], { cwd: root, encoding: "utf8" });
     assert.notEqual(doneStatus.status, 0); assert.match(doneStatus.stderr, /task transition --to done/);
+
+    const traversal = spawnSync(process.execPath, [script("context.mjs"), "case-task", "--phase", "../../../../../../tmp/secret-phase"], { cwd: root, encoding: "utf8" });
+    assert.equal(traversal.status, 1); assert.match(traversal.stderr, /Unsupported phase/); assert.doesNotMatch(traversal.stderr, /secret-phase\.md|\.agents\/aidlc\/\.\./);
+
+    const configPath = join(root, ".agents/config.json");
+    const validConfig = readFileSync(configPath, "utf8");
+    writeFileSync(configPath, "{broken");
+    const badConfig = spawnSync(process.execPath, [script("context.mjs"), "case-task", "--phase", "clarify"], { cwd: root, encoding: "utf8" });
+    assert.equal(badConfig.status, 1); assert.match(JSON.parse(badConfig.stderr.trim()).error.message, /Project config is corrupted or unreadable/);
+    writeFileSync(configPath, validConfig);
+
+    mkdirSync(join(root, ".agents/project/profiles/bad"), { recursive: true });
+    writeFileSync(join(root, ".agents/project/profiles/bad/profile.json"), "{broken");
+    const configured = JSON.parse(validConfig); configured.extends = ["bad"]; writeFileSync(configPath, JSON.stringify(configured));
+    const badProfile = spawnSync(process.execPath, [script("context.mjs"), "case-task", "--phase", "clarify"], { cwd: root, encoding: "utf8" });
+    assert.equal(badProfile.status, 1); assert.match(JSON.parse(badProfile.stderr.trim()).error.message, /Profile bad is corrupted or unreadable/);
+    writeFileSync(configPath, validConfig);
+
+    mkdirSync(join(root, ".agents/data/lessons"), { recursive: true });
+    writeFileSync(join(root, ".agents/data/lessons/index.json"), "{broken");
+    const badLessonIndex = spawnSync(process.execPath, [script("state.mjs"), "lesson", "search", "--query", "x"], { cwd: root, encoding: "utf8" });
+    assert.equal(badLessonIndex.status, 1); assert.match(JSON.parse(badLessonIndex.stderr.trim()).error.message, /Lesson index is corrupted or unreadable/);
 
     writeFileSync(join(root, ".agents/data/state/aidlc-state.json"), "{broken");
     const corrupted = spawnSync(process.execPath, [script("state.mjs"), "task", "list"], { cwd: root, encoding: "utf8" });

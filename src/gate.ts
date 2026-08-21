@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { Diagnostic, Gate, TaskState, WorkflowState } from "./model.js";
-import { hasAreaVerification, hasReview, nextAction, repairBounds, transitionDiagnostics, transitionTask } from "./state.js";
+import { hasAreaVerification, hasReview, isGrandfatheredG2Wait, nextAction, repairBounds, transitionDiagnostics, transitionTask } from "./state.js";
 
 const artifactDiagnostics = (root: string, task: TaskState, names: Array<keyof TaskState["artifacts"]>): Diagnostic[] => names.flatMap((name) => {
   const path = task.artifacts[name];
@@ -35,7 +35,7 @@ export const checkGate = (root: string, state: WorkflowState, taskId: string, ga
     for (const area of task.areas) if (!hasAreaVerification(task, area)) diagnostics.push({ level: "ERROR", code: "VERIFY_EVIDENCE", message: `Latest post-G1 verification evidence must pass for affected area: ${area}` });
     if (!hasReview(task)) diagnostics.push({ level: "ERROR", code: "REVIEW_EVIDENCE", message: "Latest post-G1 review evidence must pass" });
     const bounds = repairBounds(task);
-    if (bounds.verifyExhausted || bounds.reviewExhausted) diagnostics.push({ level: "ERROR", code: "REPAIR_BOUND", message: "Repair bound exhausted; record a durable handoff instead of presenting G2" });
+    if (!isGrandfatheredG2Wait(task) && (bounds.verifyExhausted || bounds.reviewExhausted)) diagnostics.push({ level: "ERROR", code: "REPAIR_BOUND", message: "Repair bound exhausted; record a durable handoff instead of presenting G2" });
   }
   if (!diagnostics.length) diagnostics.push({ level: "INFO", code: "GATE_OK", message: `${gate} checks passed for ${taskId}` });
   return diagnostics;

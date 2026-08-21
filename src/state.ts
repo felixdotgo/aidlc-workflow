@@ -136,10 +136,11 @@ export const validateMemoryRegistry = (value: unknown): AgenticMemoryRegistry =>
   return registry as AgenticMemoryRegistry;
 };
 
-const parseJsonFile = (path: string, label: string): unknown => {
-  try { return JSON.parse(readFileSync(path, "utf8")); }
-  catch (error) { throw new Error(`${label} is corrupted or unreadable: ${error instanceof Error ? error.message : String(error)}; restore it from git history or the archive records`); }
+const parseJsonText = (content: string, label: string, recovery = ""): unknown => {
+  try { return JSON.parse(content); }
+  catch (error) { throw new Error(`${label} is corrupted or unreadable: ${error instanceof Error ? error.message : String(error)}${recovery ? `; ${recovery}` : ""}`); }
 };
+const parseJsonFile = (path: string, label: string, recovery = ""): unknown => parseJsonText(readFileSync(path, "utf8"), label, recovery);
 
 export const loadMemoryRegistry = (root: string): AgenticMemoryRegistry => {
   const relative = ".agents/data/memory/agentic-memory.json";
@@ -314,7 +315,7 @@ export const migrateState = (root: string, state = loadState(root)): { migrated:
 export const loadState = (root: string): WorkflowState => {
   const path = statePath(root);
   assertNoSymlinkPath(root, ".agents/data/state/aidlc-state.json");
-  return existsSync(path) ? validateState(parseJsonFile(path, "AI-DLC state file")) : emptyState();
+  return existsSync(path) ? validateState(parseJsonFile(path, "AI-DLC state file", "restore it from git history or the archive records")) : emptyState();
 };
 
 export const loadTask = (root: string, id: string, state = loadState(root)): TaskState | undefined => {
@@ -326,7 +327,7 @@ export const loadTask = (root: string, id: string, state = loadState(root)): Tas
   if (!existsSync(path)) throw new Error(`Archived task record is missing: ${summary.record}`);
   const content = readFileSync(path, "utf8");
   if (digest(content) !== summary.digest) throw new Error(`Archived task digest mismatch: ${id}`);
-  const task = JSON.parse(content) as TaskState;
+  const task = parseJsonText(content, `Archived task record ${id}`) as TaskState;
   validateTask(id, task);
   if (!terminal(task) || task.status !== summary.status || task.updatedAt !== summary.updatedAt || (task.lessons?.length ?? 0) !== summary.lessonCount) throw new Error(`Archived task summary mismatch: ${id}`);
   return task;
@@ -418,6 +419,8 @@ export const repairBounds = (task: TaskState): RepairBounds => {
   return { verifyFailures, reviewFailures, exhaustedAreas, verifyExhausted: exhaustedAreas.length > 0, reviewExhausted: reviewFailures >= 2 };
 };
 
+export const isGrandfatheredG2Wait = (task: TaskState): boolean => task.phase === "build" && task.gate === "G2_codereview" && task.status === "blocked_on_user" && task.tasks.every((item) => item.status === "done" || item.status === "deferred") && hasVerification(task) && hasReview(task);
+
 export const transitionDiagnostics = (task: TaskState, target: Phase): Diagnostic[] => {
   const diagnostics: Diagnostic[] = [];
   const expected = phases.indexOf(task.phase) + 1;
@@ -464,31 +467,33 @@ export interface NextAction {
 
 export const nextAction = (task: TaskState, root?: string): NextAction => {
   const rootSuffix = root === undefined ? "" : ` --root ${JSON.stringify(resolve(root))}`;
+  const script = (name: string): string => root === undefined ? `node .agents/aidlc/scripts/${name}` : `node ${JSON.stringify(join(resolve(root), ".agents/aidlc/scripts", name))}`;
+  const stateCommand = script("state.mjs"); const contextCommand = script("context.mjs");
   if (task.phase === "done") return { classification: "complete", phase: task.phase, gate: task.gate, reason: "Task is complete" };
   if (task.status === "closed" || task.status === "superseded") return { classification: "terminal", phase: task.phase, gate: task.gate, outcome: task.status, successorTaskId: task.successorTaskId, reason: task.closure?.reason ?? "Task ended without successful completion" };
   if (task.handoff) return { classification: "blocked", phase: task.phase, gate: task.gate, reason: task.handoff.reason, actions: [
-    ...(task.phase === "build" ? [{ id: "reopen_g1" as const, command: `node .agents/aidlc/scripts/state.mjs task reopen ${task.id} --to plan --reason <reason> --source <explicit-user-request>${rootSuffix}` }] : []),
-    { id: "create_successor", command: `node .agents/aidlc/scripts/state.mjs task create <new-task-id> --title <title>${rootSuffix}` }, { id: "supersede", command: `node .agents/aidlc/scripts/state.mjs task supersede ${task.id} --successor <new-task-id> --reason <reason> --source <explicit-user-request>${rootSuffix}` },
-    { id: "close", command: `node .agents/aidlc/scripts/state.mjs task close ${task.id} --reason <reason> --source <explicit-user-request>${rootSuffix}` }
+    ...(task.phase === "build" ? [{ id: "reopen_g1" as const, command: `${stateCommand} task reopen ${task.id} --to plan --reason <reason> --source <explicit-user-request>${rootSuffix}` }] : []),
+    { id: "create_successor", command: `${stateCommand} task create <new-task-id> --title <title>${rootSuffix}` }, { id: "supersede", command: `${stateCommand} task supersede ${task.id} --successor <new-task-id> --reason <reason> --source <explicit-user-request>${rootSuffix}` },
+    { id: "close", command: `${stateCommand} task close ${task.id} --reason <reason> --source <explicit-user-request>${rootSuffix}` }
   ] };
-  if (task.status === "paused") return { classification: "blocked", phase: task.phase, gate: task.gate, reason: "Task is paused", actions: [{ id: "resume", command: `node .agents/aidlc/scripts/state.mjs task status ${task.id} --status active${rootSuffix}` }, { id: "record_handoff", command: `node .agents/aidlc/scripts/state.mjs task handoff ${task.id} --kind <kind> --reason <reason> --source <source>${rootSuffix}` }] };
-  if (task.phase === "build") { const bounds = repairBounds(task); if (bounds.verifyExhausted || bounds.reviewExhausted) { const kind = bounds.reviewExhausted ? "review_exhausted" : "repair_exhausted"; return { classification: "blocked", phase: task.phase, gate: task.gate, reason: `Repair bound exhausted (${bounds.verifyExhausted ? `3+ failed verify cycles in: ${bounds.exhaustedAreas.join(", ")}` : `${bounds.reviewFailures} failed review passes`}); record a durable handoff`, actions: [{ id: "record_handoff", command: `node .agents/aidlc/scripts/state.mjs task handoff ${task.id} --kind ${kind} --reason <summary-of-exhausted-repairs> --source <agent>${rootSuffix}` }] }; } }
-  if (task.status === "blocked_on_user" && task.gate === "G1_review" && task.decisions.some((decision) => decision.status === "unresolved")) return { classification: "run_phase", phase: task.phase, gate: task.gate, command: `node .agents/aidlc/scripts/context.mjs ${task.id} --phase plan${rootSuffix}`, reason: "Invalid premature G1 wait; resolve every decision before presenting G1" };
+  if (task.status === "paused") return { classification: "blocked", phase: task.phase, gate: task.gate, reason: "Task is paused", actions: [{ id: "resume", command: `${stateCommand} task status ${task.id} --status active${rootSuffix}` }, { id: "record_handoff", command: `${stateCommand} task handoff ${task.id} --kind <kind> --reason <reason> --source <source>${rootSuffix}` }] };
+  if (task.phase === "build" && !isGrandfatheredG2Wait(task)) { const bounds = repairBounds(task); if (bounds.verifyExhausted || bounds.reviewExhausted) { const kind = bounds.reviewExhausted ? "review_exhausted" : "repair_exhausted"; return { classification: "blocked", phase: task.phase, gate: task.gate, reason: `Repair bound exhausted (${bounds.verifyExhausted ? `3+ failed verify cycles in: ${bounds.exhaustedAreas.join(", ")}` : `${bounds.reviewFailures} failed review passes`}); record a durable handoff`, actions: [{ id: "record_handoff", command: `${stateCommand} task handoff ${task.id} --kind ${kind} --reason <summary-of-exhausted-repairs> --source <agent>${rootSuffix}` }] }; } }
+  if (task.status === "blocked_on_user" && task.gate === "G1_review" && task.decisions.some((decision) => decision.status === "unresolved")) return { classification: "run_phase", phase: task.phase, gate: task.gate, command: `${contextCommand} ${task.id} --phase plan${rootSuffix}`, reason: "Invalid premature G1 wait; resolve every decision before presenting G1" };
   if (task.status === "blocked_on_user" && task.gate === "G2_codereview" && (task.tasks.some((item) => !["done", "deferred"].includes(item.status)) || !hasVerification(task) || !hasReview(task))) {
     const open = task.tasks.filter((item) => item.status === "in_progress" || item.status === "todo");
     const item = open.find((entry) => entry.status === "in_progress") ?? open[0];
-    if (item) return { classification: "run_phase", phase: task.phase, gate: task.gate, itemId: item.id, remainingItems: open.length, command: `node .agents/aidlc/scripts/context.mjs ${task.id} --phase build --item ${item.id}${rootSuffix}`, reason: `Invalid premature G2 wait; continue build item ${item.id}` };
-    return { classification: "run_phase", phase: task.phase, gate: task.gate, remainingItems: 0, command: `node .agents/aidlc/scripts/context.mjs ${task.id} --phase build${rootSuffix}`, reason: "Invalid premature G2 wait; continue verification and adversarial review before presenting G2" };
+    if (item) return { classification: "run_phase", phase: task.phase, gate: task.gate, itemId: item.id, remainingItems: open.length, command: `${contextCommand} ${task.id} --phase build --item ${item.id}${rootSuffix}`, reason: `Invalid premature G2 wait; continue build item ${item.id}` };
+    return { classification: "run_phase", phase: task.phase, gate: task.gate, remainingItems: 0, command: `${contextCommand} ${task.id} --phase build${rootSuffix}`, reason: "Invalid premature G2 wait; continue verification and adversarial review before presenting G2" };
   }
-  if (task.status === "blocked_on_user" && task.gate === "none") return { classification: "run_phase", phase: task.phase, gate: task.gate, command: `node .agents/aidlc/scripts/context.mjs ${task.id} --phase ${task.phase}${rootSuffix}`, reason: "Invalid wait at a gateless phase; continue wrap to completion" };
-  if (task.status === "blocked_on_user") return { classification: "await_user", phase: task.phase, gate: task.gate, command: `node .agents/aidlc/scripts/state.mjs gate approve ${task.id} --gate ${task.gate} --source <explicit-user-approval>${rootSuffix}`, reason: `Explicit human approval is required at ${task.gate}` };
+  if (task.status === "blocked_on_user" && task.gate === "none") return { classification: "run_phase", phase: task.phase, gate: task.gate, command: `${stateCommand} task status ${task.id} --status active${rootSuffix}`, reason: "Recover invalid wait at a gateless wrap phase before continuing wrap" };
+  if (task.status === "blocked_on_user") return { classification: "await_user", phase: task.phase, gate: task.gate, command: `${stateCommand} gate approve ${task.id} --gate ${task.gate} --source <explicit-user-approval>${rootSuffix}`, reason: `Explicit human approval is required at ${task.gate}` };
   if (task.phase === "build") {
     const open = task.tasks.filter((item) => item.status === "in_progress" || item.status === "todo");
     const item = open.find((entry) => entry.status === "in_progress") ?? open[0];
-    if (item) return { classification: "run_phase", phase: task.phase, gate: task.gate, itemId: item.id, remainingItems: open.length, command: `node .agents/aidlc/scripts/context.mjs ${task.id} --phase build --item ${item.id}${rootSuffix}`, reason: `Continue build item ${item.id}; ${open.length} actionable item(s) remain before verification, review, and G2` };
-    return { classification: "run_phase", phase: task.phase, gate: task.gate, remainingItems: 0, command: `node .agents/aidlc/scripts/context.mjs ${task.id} --phase build${rootSuffix}`, reason: "All build items are terminal; continue verification, adversarial review, and G2 preparation" };
+    if (item) return { classification: "run_phase", phase: task.phase, gate: task.gate, itemId: item.id, remainingItems: open.length, command: `${contextCommand} ${task.id} --phase build --item ${item.id}${rootSuffix}`, reason: `Continue build item ${item.id}; ${open.length} actionable item(s) remain before verification, review, and G2` };
+    return { classification: "run_phase", phase: task.phase, gate: task.gate, remainingItems: 0, command: `${contextCommand} ${task.id} --phase build${rootSuffix}`, reason: "All build items are terminal; continue verification, adversarial review, and G2 preparation" };
   }
-  return { classification: "run_phase", phase: task.phase, gate: task.gate, command: `node .agents/aidlc/scripts/context.mjs ${task.id} --phase ${task.phase}${rootSuffix}`, reason: `Continue ${task.phase} until the next human gate, real blocker, or completion` };
+  return { classification: "run_phase", phase: task.phase, gate: task.gate, command: `${contextCommand} ${task.id} --phase ${task.phase}${rootSuffix}`, reason: `Continue ${task.phase} until the next human gate, real blocker, or completion` };
 };
 
 const audited = (reason: string, source: string): void => { if (!text(reason) || !text(source)) throw new Error("Lifecycle mutation requires non-empty --reason and --source"); };
@@ -574,7 +579,7 @@ export const searchLessons = (root: string, state: WorkflowState, query: string,
     if (!hasLessons) return [];
     throw new Error("Lesson index is missing; run state.mjs lesson rebuild");
   }
-  const index = JSON.parse(readFileSync(path, "utf8")) as LessonIndex;
+  const index = parseJsonFile(path, "Lesson index", "run state.mjs lesson rebuild") as LessonIndex;
   if (index.schemaVersion !== 1 || !Array.isArray(index.lessons) || index.sourceDigest !== lessonStateDigest(state)) throw new Error("Lesson index is stale; run state.mjs lesson rebuild");
   const queryTokens = tokens(query);
   const areaSet = new Set(areas.map((area) => area.toLocaleLowerCase()));

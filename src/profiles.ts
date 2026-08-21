@@ -103,7 +103,6 @@ export const defaultConfig = (): ProjectConfig => ({
   risk: { default: "normal" },
   context: { maxChars: 16_000 },
   agentState: {},
-  gates: { G1: { autoPass: { enabled: false } } },
   mcp: { enabled: false }
 });
 
@@ -132,7 +131,6 @@ export const loadProjectConfig = (root: string): ProjectConfig => {
     risk: { default: riskDefault },
     context: { maxChars },
     agentState,
-    gates: { G1: { autoPass: { enabled: Boolean(object(object(object(item.gates ?? {}, "config.gates").G1 ?? {}, "config.gates.G1").autoPass ?? {}, "config.gates.G1.autoPass").enabled ?? false) } } },
     tracker: tracker(item.tracker),
     mcp: mcp(item.mcp)
   };
@@ -174,7 +172,6 @@ export const resolveEffectiveConfig = (root: string, config: ProjectConfig) => {
     rules: { include: stable([...profiles.flatMap((item) => item.rules?.include ?? []), ...config.rules.include]) },
     risk: config.risk,
     context: config.context,
-    gates: config.gates,
     mcp: config.mcp
   };
 };

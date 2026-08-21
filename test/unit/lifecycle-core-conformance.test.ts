@@ -60,6 +60,7 @@ test("MCP and local cores agree that a gateless wait continues wrap", async () =
   const fixture = task(); fixture.phase = "wrap"; fixture.gate = "none"; fixture.status = "blocked_on_user";
   assert.deepEqual(core.nextAction(structuredClone(fixture)), nextAction(fixture));
   assert.equal(nextAction(fixture).classification, "run_phase");
+  assert.match(nextAction(fixture).command ?? "", /task status core-fixture --status active/);
 });
 
 test("MCP and local cores count repair bounds identically", async () => {

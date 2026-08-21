@@ -91,6 +91,11 @@ const strings = (value, label) => {
   return value;
 };
 
+const parseJson = (content, label) => {
+  try { return JSON.parse(content); }
+  catch (error) { throw new Error(`${label} is corrupted or unreadable: ${error instanceof Error ? error.message : String(error)}`); }
+};
+
 const command = (value, label) => {
   const item = object(value, label);
   if (typeof item.command !== "string" || !item.command || isAbsolute(item.command)) throw new Error(`${label}.command must be a non-absolute executable name`);
@@ -126,7 +131,7 @@ const profileAlias = (id) => builtInProfiles[id] ? id : builtInProfiles[`topolog
 
 const loadConfig = (root) => {
   const path = join(resolve(root), ".agents/config.json");
-  const item = existsSync(path) ? object(JSON.parse(readFileSync(path, "utf8")), ".agents/config.json") : {};
+  const item = existsSync(path) ? object(parseJson(readFileSync(path, "utf8"), "Project config"), ".agents/config.json") : {};
   if (item.schemaVersion !== undefined && ![1, 2, 3].includes(item.schemaVersion)) throw new Error("Unsupported project config schema");
   const risk = object(item.risk ?? {}, "config.risk");
   const context = object(item.context ?? {}, "config.context");
@@ -139,7 +144,7 @@ const loadConfig = (root) => {
     specs: { roots: strings(object(item.specs ?? {}, "config.specs").roots ?? [], "config.specs.roots").map((entry) => safeRelative(entry, "config.specs.roots")) },
     commands: commands(item.commands, "config.commands"),
     rules: { include: strings(object(item.rules ?? {}, "config.rules").include ?? [], "config.rules.include").map((entry) => safeRelative(entry, "config.rules.include")) },
-    risk: { default: riskDefault }, context: { maxChars }, gates: { G1: { autoPass: { enabled: Boolean(item.gates?.G1?.autoPass?.enabled ?? false) } } },
+    risk: { default: riskDefault }, context: { maxChars },
     mcp: item.mcp?.enabled === true ? { enabled: true, endpoint: typeof item.mcp.endpoint === "string" ? item.mcp.endpoint : undefined, workspace: typeof item.mcp.workspace === "string" ? item.mcp.workspace : undefined, tokenEnv: typeof item.mcp.tokenEnv === "string" ? item.mcp.tokenEnv : undefined, pollMs: Number.isInteger(item.mcp.pollMs) ? item.mcp.pollMs : undefined, providers: Array.isArray(item.mcp.providers) ? item.mcp.providers.filter((provider) => ["jira", "trello", "github-issues"].includes(provider)) : [] } : { enabled: false }
   };
 };
@@ -150,7 +155,7 @@ const loadProfile = (root, id) => {
   const path = join(resolve(root), ".agents/project/profiles", safeRelative(id, "profile id"), "profile.json");
   if (!existsSync(path)) throw new Error(`Unknown profile: ${id}`);
   if (lstatSync(path).isSymbolicLink() || !realpathSync(path).startsWith(`${realpathSync(resolve(root))}${separator}`)) throw new Error(`Profile escapes the project: ${id}`);
-  const value = validateProfile(JSON.parse(readFileSync(path, "utf8")), id);
+  const value = validateProfile(parseJson(readFileSync(path, "utf8"), `Profile ${id}`), id);
   if (value.id !== id) throw new Error(`Invalid profile id: ${id}`);
   return value;
 };
@@ -175,7 +180,7 @@ const resolveProfiles = (root, ids) => {
 const stable = (values) => [...new Set(values)];
 const resolveEffectiveConfig = (root, config) => {
   const profiles = resolveProfiles(root, config.extends);
-  return { profiles, discovery: { roots: stable(profiles.flatMap((item) => item.discovery?.roots ?? ["."])), workspaceMarkers: stable(profiles.flatMap((item) => item.discovery?.workspaceMarkers ?? [])) }, specs: { roots: stable([...profiles.flatMap((item) => item.specs?.roots ?? []), ...config.specs.roots]) }, commands: Object.assign({}, ...profiles.map((item) => item.commands ?? {}), config.commands), rules: { include: stable([...profiles.flatMap((item) => item.rules?.include ?? []), ...config.rules.include]) }, risk: config.risk, context: config.context, gates: config.gates, mcp: config.mcp };
+  return { profiles, discovery: { roots: stable(profiles.flatMap((item) => item.discovery?.roots ?? ["."])), workspaceMarkers: stable(profiles.flatMap((item) => item.discovery?.workspaceMarkers ?? [])) }, specs: { roots: stable([...profiles.flatMap((item) => item.specs?.roots ?? []), ...config.specs.roots]) }, commands: Object.assign({}, ...profiles.map((item) => item.commands ?? {}), config.commands), rules: { include: stable([...profiles.flatMap((item) => item.rules?.include ?? []), ...config.rules.include]) }, risk: config.risk, context: config.context, mcp: config.mcp };
 };
 
 const includedRuleFiles = (root, patterns) => {
@@ -205,6 +210,7 @@ const requiredEvidence = (task) => task.evidence.filter((item, index, entries) =
 }).map(({ detail, ...item }) => item);
 
 export const compileContext = (root, task, phase = task.phase, options = {}) => {
+  if (!["clarify", "plan", "build", "wrap", "done"].includes(phase)) throw new Error(`Unsupported phase: ${phase}`);
   const config = loadConfig(root);
   const effective = resolveEffectiveConfig(root, config);
   const profiles = effective.profiles;
@@ -215,7 +221,7 @@ export const compileContext = (root, task, phase = task.phase, options = {}) => 
   const invariants = [options.itemId ? `- Focused item context does not narrow the workplan: actionable items are ${actionableItems.join(", ") || "none"}; after this item, execute nextAction immediately.` : "", "- Continue after a non-terminal transition or item/evidence mutation; yield only at a human gate, real blocker, or completion.", "- Item completion is progress for commentary, never a final response while nextAction is run_phase.", "- Never omit approved decisions, spec anchors, safety constraints, or applicable verification evidence.", "- Agents may run configured build/test/lint commands, but workflow installation and upgrades remain human-only npm/npx operations."].filter(Boolean).join("\n");
   const phasePath = join(resolve(root), ".agents/aidlc", phase === "done" ? "phase-wrap.md" : `phase-${phase}.md`);
   const phaseContract = readFileSync(phasePath, "utf8");
-  let content = [`# AI-DLC phase packet — ${phase}`, `mode: ${options.mode ?? "standard"}${options.itemId ? ` · item: ${options.itemId}` : ""}`, "## Next action / stop contract", JSON.stringify(nextAction(task, root), null, 2), "## Phase contract", phaseContract, "## Canonical task state", compact, "## Resolved profiles", profiles.map((item) => JSON.stringify({ id: item.id, topology: item.topology, discovery: item.discovery, specs: item.specs, commands: item.commands })).join("\n"), "## Effective project configuration", JSON.stringify({ discovery: effective.discovery, specs: effective.specs, commands: effective.commands, risk: effective.risk, context: effective.context, gates: effective.gates }, null, 2), "## Invariants", invariants].join("\n\n");
+  let content = [`# AI-DLC phase packet — ${phase}`, `mode: ${options.mode ?? "standard"}${options.itemId ? ` · item: ${options.itemId}` : ""}`, "## Next action / stop contract", JSON.stringify(nextAction(task, root), null, 2), "## Phase contract", phaseContract, "## Canonical task state", compact, "## Resolved profiles", profiles.map((item) => JSON.stringify({ id: item.id, topology: item.topology, discovery: item.discovery, specs: item.specs, commands: item.commands })).join("\n"), "## Effective project configuration", JSON.stringify({ discovery: effective.discovery, specs: effective.specs, commands: effective.commands, risk: effective.risk, context: effective.context }, null, 2), "## Invariants", invariants].join("\n\n");
   if (content.length > config.context.maxChars) throw new Error("Context budget is too small for the full phase contract, next action, canonical task state, and mandatory invariants");
   const omittedRules = [];
   for (const path of rules) {

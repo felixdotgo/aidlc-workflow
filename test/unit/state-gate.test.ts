@@ -264,6 +264,30 @@ test("repair bounds force a durable handoff instead of endless repair loops", ()
   assert.equal(nextAction(current).classification, "run_phase");
 });
 
+test("a persisted ready legacy G2 wait is grandfathered without weakening active repair bounds", () => {
+  const root = mkdtempSync(join(tmpdir(), "aidlc-legacy-g2-"));
+  try {
+    const current = task(); current.phase = "build"; current.gate = "G2_codereview"; current.status = "blocked_on_user"; current.decisions[0].status = "approved"; current.tasks[0].status = "done";
+    current.evidence.push(
+      { kind: "approval", gate: "G1_review", source: "human", result: "pass", recordedAt: "2026-01-01T00:00:01.000Z" },
+      { kind: "test", area: "root", source: "test", result: "fail", recordedAt: "2026-01-01T00:00:02.000Z" },
+      { kind: "test", area: "root", source: "test", result: "fail", recordedAt: "2026-01-01T00:00:03.000Z" },
+      { kind: "lint", area: "root", source: "lint", result: "fail", recordedAt: "2026-01-01T00:00:04.000Z" },
+      { kind: "test", area: "root", source: "test", result: "pass", recordedAt: "2026-01-01T00:00:05.000Z" },
+      { kind: "lint", area: "root", source: "lint", result: "pass", recordedAt: "2026-01-01T00:00:06.000Z" },
+      { kind: "review", source: "review", result: "pass", recordedAt: "2026-01-01T00:00:07.000Z" }
+    );
+    for (const path of Object.values(current.artifacts)) { const target = join(root, path!); mkdirSync(join(target, ".."), { recursive: true }); writeFileSync(target, "review artifact"); }
+    const active = structuredClone(current); active.status = "active";
+    assert.equal(nextAction(active).classification, "blocked");
+    assert.ok(checkGate(root, { schemaVersion: 3, tasks: { [active.id]: active }, archive: {} }, active.id, "G2_codereview").some((item) => item.code === "REPAIR_BOUND"));
+    const state: WorkflowState = { schemaVersion: 3, tasks: { [current.id]: current }, archive: {} };
+    assert.equal(nextAction(current).classification, "await_user");
+    assert.doesNotMatch(checkGate(root, state, current.id, "G2_codereview").map((item) => item.code).join(","), /REPAIR_BOUND/);
+    assert.equal(approveAndAdvance(root, state, current.id, "G2_codereview", "legacy human approval").task.phase, "wrap");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test("two failed review passes exhaust the review bound", () => {
   const current = task(); current.phase = "build"; current.gate = "G2_codereview"; current.decisions[0].status = "approved"; current.tasks[0].status = "done";
   current.evidence.push({ kind: "approval", gate: "G1_review", source: "user", result: "pass", recordedAt: "2026-01-01T00:00:01.000Z" });

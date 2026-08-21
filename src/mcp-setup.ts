@@ -40,7 +40,7 @@ export const applyMcpSetup = (options: McpSetupOptions): McpSetupPlan => {
   ].join("\n");
   writeFileSync(join(plan.target, ".env.example"), `${env}\n`, "utf8");
   const configPath = join(resolve(options.root), ".agents/config.json");
-  const current = existsSync(configPath) ? JSON.parse(readFileSync(configPath, "utf8")) as Record<string, unknown> : { schemaVersion: 3, extends: ["topology/single"], specs: { roots: [] }, commands: {}, rules: { include: [] }, risk: { default: "normal" }, context: { maxChars: 16000 }, agentState: {}, gates: { G1: { autoPass: { enabled: false } } } };
+  const current = existsSync(configPath) ? JSON.parse(readFileSync(configPath, "utf8")) as Record<string, unknown> : { schemaVersion: 3, extends: ["topology/single"], specs: { roots: [] }, commands: {}, rules: { include: [] }, risk: { default: "normal" }, context: { maxChars: 16000 }, agentState: {} };
   current.mcp = plan.config;
   writeFileSync(configPath, `${JSON.stringify(current, null, 2)}\n`, "utf8");
   return plan;

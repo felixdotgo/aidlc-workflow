@@ -16,7 +16,9 @@ test("task-next guard rejects final responses across multi-item and premature G2
     writeFileSync(statePath, `${JSON.stringify({ schemaVersion: 3, tasks: { [task.id]: task }, archive: {} })}\n`);
     const active = run(); assert.equal(active.status, 2); assert.match(active.stdout, /--item T2/);
     assert.match(active.stderr, /expected pause, not a failure/);
-    assert.ok(JSON.parse(active.stdout).nextAction.command.includes(`--root ${JSON.stringify(root)}`));
+    const command = JSON.parse(active.stdout).nextAction.command;
+    assert.ok(command.includes(`node ${JSON.stringify(join(root, ".agents/aidlc/scripts/context.mjs"))}`));
+    assert.ok(command.includes(`--root ${JSON.stringify(root)}`));
 
     task.status = "blocked_on_user";
     writeFileSync(statePath, `${JSON.stringify({ schemaVersion: 3, tasks: { [task.id]: task }, archive: {} })}\n`);

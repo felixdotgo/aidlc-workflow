@@ -10,12 +10,14 @@ test("SQLite repository serializes revisions, indexes, events and idempotent ret
   try {
     const initial = await repository.get("demo");
     assert.equal(initial.revision, 0);
-    const first = await repository.apply("demo", 0, "request-1", { type: "upsertTask", taskId: "T1", task });
+    const first = await repository.apply("demo", 0, "request-1", { type: "upsertTask", taskId: "T1", task }, "/workspace/project");
     assert.equal(first.revision, 1); assert.deepEqual(first.index.taskIds, ["T1"]);
     assert.equal(first.nextActions.T1.classification, "run_phase");
-    const retry = await repository.apply("demo", 0, "request-1", { type: "upsertTask", taskId: "T1", task: { ...task, title: "ignored" } });
+    assert.match(first.nextActions.T1.command, /^node "\/workspace\/project\/\.agents\/aidlc\/scripts\/context\.mjs"/);
+    assert.match(first.nextActions.T1.command, /--root "\/workspace\/project"/);
+    const retry = await repository.apply("demo", 0, "request-1", { type: "upsertTask", taskId: "T1", task: { ...task, title: "ignored" } }, "/workspace/project");
     assert.deepEqual(retry, first);
-    await assert.rejects(() => repository.apply("demo", 0, "request-2", { type: "removeTask", taskId: "T1" }), RevisionConflict);
+    await assert.rejects(() => repository.apply("demo", 0, "request-2", { type: "removeTask", taskId: "T1" }, "/workspace/project"), RevisionConflict);
     const events = await repository.eventsSince("demo");
     assert.equal(events.length, 1); assert.equal(events[0].revision, 1);
   } finally { repository.close(); }
@@ -29,10 +31,10 @@ test("service mutation responses preserve multi-item continuation and reject pre
       tasks: [{ id: "T1", label: "First", status: "done" }, { id: "T2", label: "Second", status: "todo" }],
       evidence: [{ kind: "approval", gate: "G1_review", source: "human", result: "pass", recordedAt: "2026-01-01T00:00:01.000Z" }]
     };
-    const first = await repository.apply("loop", 0, "build", { type: "upsertTask", taskId: "T1", task: build });
+    const first = await repository.apply("loop", 0, "build", { type: "upsertTask", taskId: "T1", task: build }, "/workspace/project");
     assert.equal(first.nextActions.T1.itemId, "T2"); assert.equal(first.nextActions.T1.remainingItems, 1);
 
-    await assert.rejects(() => repository.apply("loop", first.revision, "premature", { type: "upsertTask", taskId: "T1", task: { ...build, status: "blocked_on_user" } }), /cannot enter blocked_on_user/);
+    await assert.rejects(() => repository.apply("loop", first.revision, "premature", { type: "upsertTask", taskId: "T1", task: { ...build, status: "blocked_on_user" } }, "/workspace/project"), /cannot enter blocked_on_user/);
 
     const ready = {
       ...build, status: "blocked_on_user", tasks: build.tasks.map((item) => ({ ...item, status: "done" })),
@@ -41,11 +43,19 @@ test("service mutation responses preserve multi-item continuation and reject pre
         { kind: "review", source: "service review", result: "pass", recordedAt: "2026-01-01T00:00:03.000Z" }
       ]
     };
-    const prepared = await repository.apply("loop", first.revision, "ready", { type: "upsertTask", taskId: "T1", task: ready });
+    const prepared = await repository.apply("loop", first.revision, "ready", { type: "upsertTask", taskId: "T1", task: ready }, "/workspace/project");
     assert.equal(prepared.nextActions.T1.classification, "await_user");
 
-    await assert.rejects(() => repository.apply("loop", prepared.revision, "silent-cancel", { type: "upsertTask", taskId: "T1", task: { ...ready, status: "active" } }), /Cancelled gate wait/);
-    const cancelled = await repository.apply("loop", prepared.revision, "audited-cancel", { type: "upsertTask", taskId: "T1", task: { ...ready, status: "active", evidence: [...ready.evidence, { kind: "diagnostic", result: "pass", source: "user rejection message", detail: "Cancelled gate wait at G2_codereview: changes requested", recordedAt: "2026-01-01T00:00:04.000Z" }] } });
+    await assert.rejects(() => repository.apply("loop", prepared.revision, "silent-cancel", { type: "upsertTask", taskId: "T1", task: { ...ready, status: "active" } }, "/workspace/project"), /same-gate approval or audited cancellation/);
+    await assert.rejects(() => repository.apply("loop", prepared.revision, "paused-bypass", { type: "upsertTask", taskId: "T1", task: { ...ready, status: "paused" } }, "/workspace/project"), /same-gate approval or audited cancellation/);
+    await assert.rejects(() => repository.apply("loop", prepared.revision, "replace-bypass", { type: "replaceState", state: { schemaVersion: 3, tasks: { T1: { ...ready, status: "active" } }, archive: {} } }, "/workspace/project"), /same-gate approval or audited cancellation/);
+    await assert.rejects(() => repository.apply("loop", prepared.revision, "remove-bypass", { type: "removeTask", taskId: "T1" }, "/workspace/project"), /cannot be removed while waiting/);
+    const validCancellation = { kind: "diagnostic", result: "pass", source: "user rejection message", detail: "Cancelled gate wait at G2_codereview: changes requested", recordedAt: "2026-01-01T00:00:04.000Z" };
+    const tampered = structuredClone(ready); tampered.status = "active"; tampered.evidence[1].result = "fail"; tampered.evidence.push(validCancellation);
+    await assert.rejects(() => repository.apply("loop", prepared.revision, "tampered-prefix", { type: "upsertTask", taskId: "T1", task: tampered }, "/workspace/project"), /evidence history is append-only/);
+    const wrongGate = { ...ready, status: "active", evidence: [...ready.evidence, { ...validCancellation, detail: "Cancelled gate wait at G1_review: changes requested" }] };
+    await assert.rejects(() => repository.apply("loop", prepared.revision, "wrong-gate", { type: "upsertTask", taskId: "T1", task: wrongGate }, "/workspace/project"), /same-gate approval or audited cancellation/);
+    const cancelled = await repository.apply("loop", prepared.revision, "audited-cancel", { type: "upsertTask", taskId: "T1", task: { ...ready, status: "active", evidence: [...ready.evidence, validCancellation] } }, "/workspace/project");
     assert.equal(cancelled.nextActions.T1.classification, "run_phase");
   } finally { repository.close(); }
 });
@@ -53,8 +63,8 @@ test("service mutation responses preserve multi-item continuation and reject pre
 test("service transitions preserve lifecycle gates and provider preflights redact credentials", async () => {
   const repository = new SqliteStateRepository(":memory:");
   try {
-    const first = await repository.apply("demo", 0, "create", { type: "upsertTask", taskId: "T1", task });
-    await assert.rejects(() => repository.apply("demo", first.revision, "skip-g0", { type: "transition", taskId: "T1", target: "plan" }), /G0 approval/);
+    const first = await repository.apply("demo", 0, "create", { type: "upsertTask", taskId: "T1", task }, "/workspace/project");
+    await assert.rejects(() => repository.apply("demo", first.revision, "skip-g0", { type: "transition", taskId: "T1", target: "plan" }, "/workspace/project"), /G0 approval/);
     const original = { baseUrl: process.env.JIRA_BASE_URL, token: process.env.JIRA_TOKEN };
     process.env.JIRA_BASE_URL = "https://jira.example.test"; process.env.JIRA_TOKEN = "never-return-this";
     try {
@@ -73,8 +83,8 @@ test("concurrent writes never produce last-write-wins state", async () => {
   const repository = new SqliteStateRepository(":memory:");
   try {
     const [left, right] = await Promise.allSettled([
-      repository.apply("concurrent", 0, "left", { type: "upsertTask", taskId: "T1", task }),
-      repository.apply("concurrent", 0, "right", { type: "upsertTask", taskId: "T2", task: { ...task, id: "T2", artifacts: { intent: ".agents/data/tasks/T2/intent.md", design: ".agents/data/tasks/T2/design.md", workplan: ".agents/data/tasks/T2/workplan.md" } } })
+      repository.apply("concurrent", 0, "left", { type: "upsertTask", taskId: "T1", task }, "/workspace/project"),
+      repository.apply("concurrent", 0, "right", { type: "upsertTask", taskId: "T2", task: { ...task, id: "T2", artifacts: { intent: ".agents/data/tasks/T2/intent.md", design: ".agents/data/tasks/T2/design.md", workplan: ".agents/data/tasks/T2/workplan.md" } } }, "/workspace/project")
     ]);
     assert.equal([left, right].filter((item) => item.status === "fulfilled").length, 1);
     assert.equal([left, right].filter((item) => item.status === "rejected" && item.reason instanceof RevisionConflict).length, 1);

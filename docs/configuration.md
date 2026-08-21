@@ -16,12 +16,13 @@ Each installed project owns its workflow configuration at `.agents/config.json`.
   "rules": { "include": [".agents/project/rules/*.md"] },
   "risk": { "default": "normal" },
   "context": { "maxChars": 16000 },
-  "agentState": {},
-  "gates": { "G1": { "autoPass": { "enabled": false } } }
+  "agentState": {}
 }
 ```
 
 Commands are stored as executable and argument arrays. Do not replace them with shell strings: this keeps execution inspectable and avoids accidental shell interpretation.
+
+G0, G1, and G2 always require explicit human approval. Configuration cannot auto-pass a gate.
 
 ## Configuration layers
 

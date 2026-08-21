@@ -45,6 +45,7 @@ export interface ContextPacket {
 export interface ContextOptions { mode?: "standard" | "economy"; itemId?: string }
 
 export const compileContext = (root: string, config: ProjectConfig, task: TaskState, phase: Phase, options: ContextOptions = {}): ContextPacket => {
+  if (!["clarify", "plan", "build", "wrap", "done"].includes(phase)) throw new Error(`Unsupported phase: ${phase}`);
   const effective = resolveEffectiveConfig(root, config);
   const profiles = effective.profiles;
   const ruleFiles = includedRuleFiles(root, effective.rules.include);
@@ -71,7 +72,7 @@ export const compileContext = (root: string, config: ProjectConfig, task: TaskSt
     "## Resolved profiles",
     profileSummary(profiles),
     "## Project configuration",
-    JSON.stringify({ discovery: effective.discovery, specs: effective.specs, commands: effective.commands, risk: effective.risk, context: effective.context, gates: effective.gates }, null, 2),
+    JSON.stringify({ discovery: effective.discovery, specs: effective.specs, commands: effective.commands, risk: effective.risk, context: effective.context }, null, 2),
     "## Invariants",
     invariants
   ].join("\n\n");
