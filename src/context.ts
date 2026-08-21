@@ -58,7 +58,7 @@ export const compileContext = (root: string, config: ProjectConfig, task: TaskSt
     "- Never omit approved decisions, spec anchors, safety constraints, or applicable verification evidence.",
     "- Agents may run configured build/test/lint commands, but workflow installation and upgrades remain human-only npm/npx operations."
   ].filter(Boolean).join("\n");
-  const action = JSON.stringify(nextAction(task), null, 2);
+  const action = JSON.stringify(nextAction(task, root), null, 2);
   const required = [
     `# AI-DLC phase packet — ${phase}`,
     `mode: ${options.mode ?? "standard"}${options.itemId ? ` · item: ${options.itemId}` : ""}`,

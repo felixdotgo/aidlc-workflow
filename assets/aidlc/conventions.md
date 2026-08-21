@@ -17,7 +17,7 @@ Each transition requires the preceding approval evidence. Build additionally req
 
 Verification is evaluated independently for each affected area and each `test` or `lint` kind recorded after the current build boundary. At least one verification kind must exist per area, and the latest record of every kind present must pass. A lint pass cannot hide a test failure, or vice versa.
 
-`blocked_on_user` is reserved for a gate that is structurally ready and waiting for explicit human approval. It cannot be cancelled with `task status --status active`; use an audited lifecycle action instead. A real blocker or exhausted repair bound uses `task handoff`, which stores a reason and returns structured `reopen_g1`, `create_successor`, and `close` choices. Reopening G1 resets every non-deferred build item to `todo`. `closed` and `superseded` are terminal non-success outcomes that preserve the phase where work stopped; only `done` is successful completion. A successor is created as a fresh G0 task, then linked atomically with `task supersede`; it never inherits approvals or evidence.
+`blocked_on_user` is reserved for a gate that is structurally ready and waiting for explicit human approval; wrap has no human gate, so it is rejected there. Cancelling a gate wait requires the audited form `task status <id> --status active --mode audited --reason <reason> --source <source>`, which records a diagnostic evidence entry. A real blocker or exhausted repair bound uses `task handoff` with `--kind` exactly one of `repair_exhausted`, `review_exhausted`, `g2_failed`, `release_failed`, `structural_change`, or `other`; it stores a reason and returns structured `reopen_g1`, `create_successor`, `supersede`, and `close` choices. Reopening G1 resets every non-deferred build item to `todo`. `closed` and `superseded` are terminal non-success outcomes that preserve the phase where work stopped; only `done` is successful completion. A successor is created as a fresh G0 task, then linked atomically with `task supersede`; it never inherits approvals or evidence.
 
 Lifecycle commands that end or redirect work require an explicit reason and source:
 
@@ -39,6 +39,10 @@ Decision states:
 
 Evidence kinds are `approval`, `spec`, `test`, `lint`, `review`, and `diagnostic`; results are `pass`, `fail`, or `skip`. Approval evidence is created only by atomic `gate approve`; the generic `evidence add` command rejects `approval`. A skipped verification must state residual risk. Evidence is append-only during a task; corrections add a new record rather than rewriting history, and current-build boundaries use that append order rather than wall-clock ordering.
 
+## Command output contract
+
+Every `state.mjs` and `task-next.mjs` command prints one JSON envelope: `{ok: true, result, nextAction?}` on success (with `nextAction` present whenever the command is task-scoped) and a one-line `{ok: false, error: {message, hint?}}` on stderr for failures. Exit codes are typed: `0` success, `1` an expected validation or gate error, `2` the `--require-stop` continuation guard (an expected pause, not a failure), `3` an unexpected crash. Commands embedded in `nextAction` carry an explicit `--root` so they run correctly from any working directory.
+
 ## Human gate forms
 
 Gate presentation is executable, not model-authored. After a passing gate check, run `node .agents/aidlc/scripts/gate-view.mjs <task-id>` and relay its output verbatim. The default Markdown uses a portable `[!IMPORTANT]` blockquote with explicit task state, artifact links, decision/execution counts, evidence, and exactly one `ACTION REQUIRED` line. Use `--format plain` when the tool does not render Markdown and `--format json` for integrations. Renderer-specific color is enhancement only; approval semantics live in canonical state.
@@ -51,12 +55,14 @@ The default phase packet budget is 16,000 characters. Optional rules and diagnos
 
 ## Repair bounds
 
-- Verification: at most three fix-and-rerun cycles per affected area.
-- Review: at most two passes.
+Repair bounds are machine-enforced from current-build evidence; the model does not have to count.
+
+- Verification: at most three failed verify records (`test`/`lint`) per affected area. The third failure flips `nextAction` to `blocked` and adds a `REPAIR_BOUND` error to the G2 gate check.
+- Review: at most two failed review records; the second failure does the same with `--kind review_exhausted`.
 - Security, migration, contract, or where-logic-lives changes reopen G1 immediately.
-- A bound hit produces a diagnosis and human escalation; it never silently passes.
-- After recording the failed diagnostic, a bound hit must create a durable handoff instead of presenting an unready gate.
+- A bound hit produces a diagnosis and human escalation; it never silently passes. Follow the handoff command returned by `nextAction` instead of retrying.
+- Reopening G1 moves the build boundary, which resets both counters for the new cycle.
 
 ## Language and scaffold
 
-Technical tokens, paths, commands, enum values, and structural headings remain English. Prose follows the task language. Stable emoji headings are: `📋 Problem`, `🗺️ Affected areas`, `💭 Assumptions`, `❓ Open questions`, `🎯 Scope`, `🚫 Out of scope`, `🧩 Decisions`, `🧩 Tasks`, `📌 Spec traceability`, `🔗 Cross-service contracts`, `⚠️ Risks / edge cases`, `🔧 Verify`, and `📁 Files touched`.
+Technical tokens, paths, commands, enum values, and structural headings remain English. Prose follows the task language. Stable emoji headings are: `📋 Problem`, `🗺️ Affected areas`, `💭 Assumptions`, `❓ Open questions`, `🎯 Scope` (with an inline `**🚫 Out:**` list inside it), `🧩 Solution per affected area`, `📌 Spec traceability`, `🔗 Cross-service contracts`, `⚠️ Risks / edge cases`, `🧩 Decisions`, and `🧩 Tasks`. The intent headings and the design headings are enforced verbatim by `gate-check.mjs` at G0 and G1.

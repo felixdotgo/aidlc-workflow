@@ -31,6 +31,11 @@ const applyCommand = (current, command) => {
   }
   if (command.type === "upsertTask") {
     if (typeof command.taskId !== "string" || !command.taskId || !command.task || typeof command.task !== "object" || Array.isArray(command.task)) throw new Error("upsertTask requires taskId and task");
+    const previous = current.state.tasks?.[command.taskId];
+    if (previous?.status === "blocked_on_user" && command.task.status === "active") {
+      const appended = Array.isArray(command.task.evidence) ? command.task.evidence.slice(previous.evidence.length) : [];
+      if (!appended.some((item) => item?.kind === "diagnostic" && String(item.detail ?? "").startsWith("Cancelled gate wait"))) throw new Error(`Task ${command.taskId} cannot cancel a human-gate wait without an audited "Cancelled gate wait" diagnostic record`);
+    }
     state.tasks ??= {}; state.tasks[command.taskId] = structuredClone(command.task);
     index = { ...index, taskIds: Object.keys(state.tasks).sort() };
     return mutationResult(state, index, [command.taskId]);

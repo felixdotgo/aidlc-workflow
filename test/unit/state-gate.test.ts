@@ -35,6 +35,13 @@ test("state machine enforces approvals, decisions, verification, and review", ()
   assert.equal(current.status, "done");
 });
 
+test("a gateless wrap wait routes back to run_phase instead of an unapprovable gate", () => {
+  const current = task(); current.phase = "wrap"; current.gate = "none"; current.status = "blocked_on_user"; current.decisions[0].status = "approved"; current.tasks[0].status = "done";
+  const action = nextAction(current);
+  assert.equal(action.classification, "run_phase");
+  assert.match(action.reason, /gateless/);
+});
+
 test("rendered workplans are deterministic and gate checks require artifacts/evidence", () => {
   const root = mkdtempSync(join(tmpdir(), "aidlc-state-"));
   try {
@@ -239,4 +246,41 @@ test("self-transition is rejected without clearing a validated gate wait", () =>
   const state: WorkflowState = { schemaVersion: 3, tasks: { [current.id]: current }, archive: {} };
   assert.throws(() => transitionTask(state, current.id, "build"), /Cannot transition build → build/);
   assert.equal(current.status, "blocked_on_user"); assert.equal(current.phase, "build");
+});
+
+test("repair bounds force a durable handoff instead of endless repair loops", () => {
+  const current = task(); current.phase = "build"; current.gate = "G2_codereview"; current.decisions[0].status = "approved"; current.tasks[0].status = "done";
+  current.evidence.push({ kind: "approval", gate: "G1_review", source: "user", result: "pass", recordedAt: "2026-01-01T00:00:01.000Z" });
+  current.evidence.push({ kind: "test", area: "root", source: "npm test", result: "fail", recordedAt: "2026-01-01T00:00:02.000Z" });
+  current.evidence.push({ kind: "test", area: "root", source: "npm test", result: "fail", recordedAt: "2026-01-01T00:00:03.000Z" });
+  assert.equal(nextAction(current).classification, "run_phase");
+  current.evidence.push({ kind: "lint", area: "root", source: "npm run lint", result: "fail", recordedAt: "2026-01-01T00:00:04.000Z" });
+  const blocked = nextAction(current);
+  assert.equal(blocked.classification, "blocked");
+  assert.match(blocked.actions?.[0].command ?? "", /--kind repair_exhausted/);
+  const diagnostics = checkGate("/nonexistent-root", { schemaVersion: 1, tasks: { [current.id]: current } }, current.id, "G2_codereview");
+  assert.ok(diagnostics.some((item) => item.code === "REPAIR_BOUND"));
+  current.evidence.push({ kind: "approval", gate: "G1_review", source: "user", result: "pass", recordedAt: "2026-01-01T00:00:05.000Z" });
+  assert.equal(nextAction(current).classification, "run_phase");
+});
+
+test("two failed review passes exhaust the review bound", () => {
+  const current = task(); current.phase = "build"; current.gate = "G2_codereview"; current.decisions[0].status = "approved"; current.tasks[0].status = "done";
+  current.evidence.push({ kind: "approval", gate: "G1_review", source: "user", result: "pass", recordedAt: "2026-01-01T00:00:01.000Z" });
+  current.evidence.push({ kind: "review", source: "diff review", result: "fail", recordedAt: "2026-01-01T00:00:02.000Z" });
+  assert.equal(nextAction(current).classification, "run_phase");
+  current.evidence.push({ kind: "review", source: "diff review", result: "fail", recordedAt: "2026-01-01T00:00:03.000Z" });
+  const blocked = nextAction(current);
+  assert.equal(blocked.classification, "blocked");
+  assert.match(blocked.actions?.[0].command ?? "", /--kind review_exhausted/);
+});
+
+test("paused and handed-off tasks expose structured recovery actions", () => {
+  const current = task(); current.phase = "build"; current.gate = "G2_codereview"; current.status = "paused";
+  const paused = nextAction(current);
+  assert.equal(paused.classification, "blocked");
+  assert.deepEqual(paused.actions?.map((item) => item.id), ["resume", "record_handoff"]);
+  current.handoff = { kind: "structural_change", reason: "replan", source: "human", recordedAt: "2026-01-01T00:00:01.000Z" };
+  const handedOff = nextAction(current);
+  assert.deepEqual(handedOff.actions?.map((item) => item.id), ["reopen_g1", "create_successor", "supersede", "close"]);
 });

@@ -43,6 +43,10 @@ test("service mutation responses preserve multi-item continuation and reject pre
     };
     const prepared = await repository.apply("loop", first.revision, "ready", { type: "upsertTask", taskId: "T1", task: ready });
     assert.equal(prepared.nextActions.T1.classification, "await_user");
+
+    await assert.rejects(() => repository.apply("loop", prepared.revision, "silent-cancel", { type: "upsertTask", taskId: "T1", task: { ...ready, status: "active" } }), /Cancelled gate wait/);
+    const cancelled = await repository.apply("loop", prepared.revision, "audited-cancel", { type: "upsertTask", taskId: "T1", task: { ...ready, status: "active", evidence: [...ready.evidence, { kind: "diagnostic", result: "pass", source: "user rejection message", detail: "Cancelled gate wait at G2_codereview: changes requested", recordedAt: "2026-01-01T00:00:04.000Z" }] } });
+    assert.equal(cancelled.nextActions.T1.classification, "run_phase");
   } finally { repository.close(); }
 });
 

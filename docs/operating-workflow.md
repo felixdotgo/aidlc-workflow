@@ -43,7 +43,7 @@ node .agents/aidlc/scripts/gate-view.mjs <task-id>
 
 Lifecycle options support both `--name value` and `--name=value` in any order. Invalid options and command shapes fail before lock or state access. From a project subdirectory, an omitted `--root` selects the nearest ancestor containing `.agents/aidlc/`; outside an installed project the command fails without creating `.agents`. Use explicit `--root` to select a different installed project.
 
-Successful lifecycle mutations return a JSON envelope containing the affected task/result and `nextAction`. During build, the action identifies the next `in_progress` or `todo` item; after all items are terminal it still returns `run_phase` until verification, adversarial review, and G2 preparation finish. Before any final response, the agent runs `task-next.mjs <task-id> --require-stop`; exit code `2` with `CONTINUATION_REQUIRED` means it must execute the printed command instead of replying.
+Every lifecycle command returns one JSON envelope `{ok, result, nextAction?}`; errors are one-line `{ok: false, error}` records on stderr with typed exit codes (`1` expected, `2` continuation guard, `3` crash). During build, the action identifies the next `in_progress` or `todo` item; after all items are terminal it still returns `run_phase` until verification, adversarial review, and G2 preparation finish. Before any final response, the agent runs `task-next.mjs <task-id> --require-stop`; exit code `2` with `CONTINUATION_REQUIRED` means it must execute the printed command instead of replying.
 
 ## Gates and approvals
 
@@ -61,7 +61,7 @@ Terminal archiving commits the immutable record before the compact catalog. A re
 
 ## Blocked work and successors
 
-`blocked_on_user` means a valid human gate is ready. The status command validates gate prerequisites before persisting it, rejects attempts to cancel a validated wait with `--status active`, and `gate-view` refuses to present an active or unready task. It does not mean a failed change is waiting for a rubber stamp. When verification or review cannot pass, the workflow records a durable handoff and offers structured options.
+`blocked_on_user` means a valid human gate is ready; wrap has no human gate and rejects it. The status command validates gate prerequisites before persisting it, and `gate-view` refuses to present an active or unready task. Cancelling a validated wait (for example after the user rejects a gate) requires the audited form `task status <task-id> --status active --mode audited --reason "<reason>" --source "<user message>"`, which records diagnostic evidence. Repair bounds are machine-enforced: three failed verify records per area or two failed review records in the current build flip `nextAction` to `blocked` and close G2 with `REPAIR_BOUND` until a durable handoff is recorded. It does not mean a failed change is waiting for a rubber stamp. When verification or review cannot pass, the workflow records a durable handoff and offers structured options.
 
 ```sh
 node .agents/aidlc/scripts/state.mjs task handoff <task-id> --kind <kind> --reason "<reason>" --source "<evidence>"

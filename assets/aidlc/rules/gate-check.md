@@ -1,6 +1,6 @@
 # Gate-check command (AI-DLC · project rule)
 
-> Project-specific executable for the gate self-check. The generic contract lives in `conventions.md §3`.
+> Project-specific executable for the gate self-check. The generic contract lives in `conventions.md`, section "Human gate forms".
 
 ## Command
 

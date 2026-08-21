@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { Diagnostic, Gate, TaskState, WorkflowState } from "./model.js";
-import { hasAreaVerification, hasReview, nextAction, transitionDiagnostics, transitionTask } from "./state.js";
+import { hasAreaVerification, hasReview, nextAction, repairBounds, transitionDiagnostics, transitionTask } from "./state.js";
 
 const artifactDiagnostics = (root: string, task: TaskState, names: Array<keyof TaskState["artifacts"]>): Diagnostic[] => names.flatMap((name) => {
   const path = task.artifacts[name];
@@ -34,6 +34,8 @@ export const checkGate = (root: string, state: WorkflowState, taskId: string, ga
     if (task.tasks.some((item) => item.status !== "done" && item.status !== "deferred")) diagnostics.push({ level: "ERROR", code: "TASKS_OPEN", message: "Build tasks remain open" });
     for (const area of task.areas) if (!hasAreaVerification(task, area)) diagnostics.push({ level: "ERROR", code: "VERIFY_EVIDENCE", message: `Latest post-G1 verification evidence must pass for affected area: ${area}` });
     if (!hasReview(task)) diagnostics.push({ level: "ERROR", code: "REVIEW_EVIDENCE", message: "Latest post-G1 review evidence must pass" });
+    const bounds = repairBounds(task);
+    if (bounds.verifyExhausted || bounds.reviewExhausted) diagnostics.push({ level: "ERROR", code: "REPAIR_BOUND", message: "Repair bound exhausted; record a durable handoff instead of presenting G2" });
   }
   if (!diagnostics.length) diagnostics.push({ level: "INFO", code: "GATE_OK", message: `${gate} checks passed for ${taskId}` });
   return diagnostics;
@@ -47,13 +49,13 @@ export const approveAndAdvance = (root: string, state: WorkflowState, taskId: st
   if (task.status === "closed" || task.status === "superseded" || task.handoff) throw new Error(`Terminal or handed-off task cannot approve ${gate}`);
   const target = gateTarget[gate];
   if (!target) throw new Error(`Gate ${gate} cannot be approved`);
-  if (task.phase === target) return { task, nextAction: nextAction(task), idempotent: true };
+  if (task.phase === target) return { task, nextAction: nextAction(task, root), idempotent: true };
   if (task.gate !== gate || task.status !== "blocked_on_user") throw new Error(`Task must be blocked_on_user at ${gate}`);
   const errors = checkGate(root, state, taskId, gate).filter((item) => item.level === "ERROR");
   if (errors.length) throw new Error(errors.map((item) => item.message).join("; "));
   task.evidence.push({ kind: "approval", gate, result: "pass", source, recordedAt });
   transitionTask(state, taskId, target);
-  return { task, nextAction: nextAction(task), idempotent: false };
+  return { task, nextAction: nextAction(task, root), idempotent: false };
 };
 
 export const formatDiagnostics = (diagnostics: Diagnostic[]): string => diagnostics.map((item) => `${item.level} ${item.code}: ${item.message}`).join("\n");

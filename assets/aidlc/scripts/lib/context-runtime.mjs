@@ -50,6 +50,13 @@ export const validateArguments = (parsed, { minPositionals, maxPositionals = min
   return parsed;
 };
 
+export const failEntry = (error) => {
+  const expected = error instanceof Error && error.name === "Error";
+  const payload = { ok: false, error: { message: error instanceof Error ? error.message : String(error), ...(error?.hint ? { hint: error.hint } : {}) } };
+  console.error(JSON.stringify(payload));
+  process.exitCode = expected ? 1 : 3;
+};
+
 export const rootOption = (parsed) => {
   const explicit = option(parsed, "--root");
   if (explicit !== undefined) {
@@ -208,7 +215,7 @@ export const compileContext = (root, task, phase = task.phase, options = {}) => 
   const invariants = [options.itemId ? `- Focused item context does not narrow the workplan: actionable items are ${actionableItems.join(", ") || "none"}; after this item, execute nextAction immediately.` : "", "- Continue after a non-terminal transition or item/evidence mutation; yield only at a human gate, real blocker, or completion.", "- Item completion is progress for commentary, never a final response while nextAction is run_phase.", "- Never omit approved decisions, spec anchors, safety constraints, or applicable verification evidence.", "- Agents may run configured build/test/lint commands, but workflow installation and upgrades remain human-only npm/npx operations."].filter(Boolean).join("\n");
   const phasePath = join(resolve(root), ".agents/aidlc", phase === "done" ? "phase-wrap.md" : `phase-${phase}.md`);
   const phaseContract = readFileSync(phasePath, "utf8");
-  let content = [`# AI-DLC phase packet — ${phase}`, `mode: ${options.mode ?? "standard"}${options.itemId ? ` · item: ${options.itemId}` : ""}`, "## Next action / stop contract", JSON.stringify(nextAction(task), null, 2), "## Phase contract", phaseContract, "## Canonical task state", compact, "## Resolved profiles", profiles.map((item) => JSON.stringify({ id: item.id, topology: item.topology, discovery: item.discovery, specs: item.specs, commands: item.commands })).join("\n"), "## Effective project configuration", JSON.stringify({ discovery: effective.discovery, specs: effective.specs, commands: effective.commands, risk: effective.risk, context: effective.context, gates: effective.gates }, null, 2), "## Invariants", invariants].join("\n\n");
+  let content = [`# AI-DLC phase packet — ${phase}`, `mode: ${options.mode ?? "standard"}${options.itemId ? ` · item: ${options.itemId}` : ""}`, "## Next action / stop contract", JSON.stringify(nextAction(task, root), null, 2), "## Phase contract", phaseContract, "## Canonical task state", compact, "## Resolved profiles", profiles.map((item) => JSON.stringify({ id: item.id, topology: item.topology, discovery: item.discovery, specs: item.specs, commands: item.commands })).join("\n"), "## Effective project configuration", JSON.stringify({ discovery: effective.discovery, specs: effective.specs, commands: effective.commands, risk: effective.risk, context: effective.context, gates: effective.gates }, null, 2), "## Invariants", invariants].join("\n\n");
   if (content.length > config.context.maxChars) throw new Error("Context budget is too small for the full phase contract, next action, canonical task state, and mandatory invariants");
   const omittedRules = [];
   for (const path of rules) {

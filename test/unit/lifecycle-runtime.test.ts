@@ -24,8 +24,8 @@ test("installed lifecycle scripts preserve every concurrent local mutation", asy
     const ids = Array.from({ length: 16 }, (_, index) => `2026-lock-${String(index).padStart(2, "0")}`);
     await Promise.all(ids.map((id) => runAsync(root, "state.mjs", ["task", "create", id, "--title", `Concurrent ${id}`])));
     const catalog = JSON.parse(run(root, "state.mjs", ["task", "list"]));
-    assert.equal(catalog.total, ids.length);
-    for (const id of ids) assert.equal(JSON.parse(run(root, "state.mjs", ["task", "show", id])).id, id);
+    assert.equal(catalog.result.total, ids.length);
+    for (const id of ids) assert.equal(JSON.parse(run(root, "state.mjs", ["task", "show", id])).result.id, id);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -50,12 +50,12 @@ test("installed lifecycle CLI parses strictly and resolves one canonical project
     run(root, "state.mjs", ["gate", "approve", id, "--gate=G0_confirm", "--source=human"]);
     run(root, "state.mjs", ["decision", "set", id, "D1", "--status=approved", "--resolution=keep me"]);
     run(root, "state.mjs", ["decision", "set", id, "D1", "--status", "approved"]);
-    assert.equal(JSON.parse(run(root, "state.mjs", ["task", "show", id])).decisions[0].resolution, "keep me");
+    assert.equal(JSON.parse(run(root, "state.mjs", ["task", "show", id])).result.decisions[0].resolution, "keep me");
     run(root, "state.mjs", ["task", "item", id, "--status=todo", "item-one"]);
     run(root, "state.mjs", ["task", "item", id, "--status=done", "item-one"]);
     const parsedTask = JSON.parse(run(root, "state.mjs", ["task", "show", id]));
-    assert.equal(parsedTask.tasks[0].id, "item-one");
-    assert.equal(parsedTask.tasks[0].status, "done");
+    assert.equal(parsedTask.result.tasks[0].id, "item-one");
+    assert.equal(parsedTask.result.tasks[0].status, "done");
 
     const statePath = join(root, ".agents/data/state/aidlc-state.json");
     const before = readFileSync(statePath, "utf8");
@@ -74,7 +74,7 @@ test("installed lifecycle CLI parses strictly and resolves one canonical project
     mkdirSync(nested, { recursive: true });
     const nestedId = "2026-nested-root";
     run(root, "state.mjs", ["task", "create", nestedId, "--title", "Nested root"], nested);
-    assert.equal(JSON.parse(run(root, "state.mjs", ["task", "show", nestedId])).id, nestedId);
+    assert.equal(JSON.parse(run(root, "state.mjs", ["task", "show", nestedId])).result.id, nestedId);
     assert.equal(existsSync(join(nested, ".agents")), false);
 
     assert.match(run(root, "task-next.mjs", ["--root", root, id], outside), /run_phase|await_user/);
@@ -104,13 +104,13 @@ test("installed local scripts drive the lifecycle without an aidlc executable or
     const g0 = JSON.parse(run(root, "state.mjs", ["gate", "approve", id, "--gate", "G0_confirm", "--source", "human approval"]));
     assert.equal(g0.nextAction.classification, "run_phase");
     const g0Retry = JSON.parse(run(root, "state.mjs", ["gate", "approve", id, "--gate", "G0_confirm", "--source", "retry"]));
-    assert.equal(g0Retry.idempotent, true);
+    assert.equal(g0Retry.result.idempotent, true);
     run(root, "state.mjs", ["decision", "set", id, "D1", "--status", "approved", "--label", "Use local scripts", "--resolution", "approved choice"]);
     run(root, "state.mjs", ["task", "item", id, "T1", "--status", "todo", "--label", "Implement runtime"]);
     run(root, "state.mjs", ["task", "item", id, "T2", "--status", "todo", "--label", "Verify continuation"]);
     run(root, "state.mjs", ["task", "status", id, "--status", "blocked_on_user"]);
     const g1 = JSON.parse(run(root, "state.mjs", ["gate", "approve", id, "--gate", "G1_review", "--source", "human approval"]));
-    assert.equal(g1.task.phase, "build");
+    assert.equal(g1.result.task.phase, "build");
     const forgedApproval = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "evidence", "add", id, "--kind", "approval", "--gate", "G2_codereview", "--result", "pass"], { cwd: root, encoding: "utf8" });
     assert.notEqual(forgedApproval.status, 0); assert.match(forgedApproval.stderr, /approvals use gate approve/);
     const rawTransition = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "task", "transition", id, "--to", "build"], { cwd: root, encoding: "utf8" });
@@ -142,9 +142,14 @@ test("installed local scripts drive the lifecycle without an aidlc executable or
     const prepared = JSON.parse(run(root, "state.mjs", ["task", "status", id, "--status", "blocked_on_user"]));
     assert.equal(prepared.nextAction.classification, "await_user");
     const cancelWait = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "task", "status", id, "--status", "active"], { cwd: root, encoding: "utf8" });
-    assert.notEqual(cancelWait.status, 0); assert.match(cancelWait.stderr, /Cannot cancel a validated human-gate wait/);
+    assert.notEqual(cancelWait.status, 0); assert.match(cancelWait.stderr, /--mode audited/);
+    const auditedCancel = JSON.parse(run(root, "state.mjs", ["task", "status", id, "--status", "active", "--mode", "audited", "--reason", "user requested changes", "--source", "user rejection message"]));
+    assert.equal(auditedCancel.nextAction.classification, "run_phase");
+    assert.match(run(root, "state.mjs", ["task", "show", id]), /Cancelled gate wait at G2_codereview/);
+    const reblocked = JSON.parse(run(root, "state.mjs", ["task", "status", id, "--status", "blocked_on_user"]));
+    assert.equal(reblocked.nextAction.classification, "await_user");
     const next = JSON.parse(run(root, "state.mjs", ["task", "next", id]));
-    assert.equal(next.classification, "await_user");
+    assert.equal(next.nextAction.classification, "await_user");
     assert.match(run(root, "gate-view.mjs", [id, "--format", "plain"]), /^\[IMPORTANT\].*GATE G2/);
     assert.equal(JSON.parse(run(root, "gate-view.mjs", [id, "--format", "json"])).gate, "G2_codereview");
     assert.match(run(root, "context.mjs", [id, "--phase", "build", "--format", "json"]), /Runtime smoke/);
@@ -155,17 +160,19 @@ test("installed local scripts drive the lifecycle without an aidlc executable or
     assert.doesNotMatch(readFileSync(join(root, "AGENTS.md"), "utf8"), /aidlc context/);
 
     const g2 = JSON.parse(run(root, "state.mjs", ["gate", "approve", id, "--gate", "G2_codereview", "--source", "human approval"]));
-    assert.equal(g2.task.phase, "wrap"); assert.equal(g2.nextAction.classification, "run_phase");
+    assert.equal(g2.result.task.phase, "wrap"); assert.equal(g2.nextAction.classification, "run_phase");
+    const wrapWait = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "task", "status", id, "--status", "blocked_on_user"], { cwd: root, encoding: "utf8" });
+    assert.notEqual(wrapWait.status, 0); assert.match(wrapWait.stderr, /no human gate/);
     run(root, "state.mjs", ["lesson", "record", id, "L1", "--area", "root", "--summary", "Use installed lifecycle commands", "--prevention", "Do not hand-edit state", "--example", "state.mjs task show", "--promotion", "orchestrator", "--source", "runtime smoke"]);
-    assert.equal(JSON.parse(run(root, "state.mjs", ["lesson", "search", "--query", "lifecycle", "--area", "root"])).length, 1);
+    assert.equal(JSON.parse(run(root, "state.mjs", ["lesson", "search", "--query", "lifecycle", "--area", "root"])).result.length, 1);
     run(root, "state.mjs", ["task", "archive", id]);
-    assert.equal(JSON.parse(run(root, "state.mjs", ["task", "next", id])).classification, "complete");
+    assert.equal(JSON.parse(run(root, "state.mjs", ["task", "next", id])).nextAction.classification, "complete");
     const compact = JSON.parse(readFileSync(join(root, ".agents/data/state/aidlc-state.json"), "utf8"));
     assert.equal(compact.schemaVersion, 3); assert.equal(compact.tasks[id], undefined); assert.equal(compact.archive[id].lessonCount, 1);
     assert.ok(existsSync(join(root, ".agents/data/state/archive", `${id}.json`)));
     assert.match(run(root, "state.mjs", ["task", "show", id]), /Use installed lifecycle commands/);
     const catalog = JSON.parse(run(root, "state.mjs", ["task", "show", "--include-archive"]));
-    assert.equal(catalog.items.length, 1); assert.equal(catalog.items[0].source, "archive");
+    assert.equal(catalog.result.items.length, 1); assert.equal(catalog.result.items[0].source, "archive");
 
     const oldCli = spawnSync(process.execPath, [resolve("dist/src/cli.js"), "task", "show"], { encoding: "utf8" });
     assert.equal(oldCli.status, 1);
@@ -193,14 +200,14 @@ test("installed runtime supports audited handoff, reopen, close, and atomic supe
     const handoff = JSON.parse(run(root, "state.mjs", ["task", "handoff", predecessor, "--kind", "release_failed", "--reason", "provider evidence failed", "--source", "human"]));
     assert.equal(handoff.nextAction.classification, "blocked"); assert.equal(handoff.nextAction.actions.some((item: { id: string }) => item.id === "reopen_g1"), true);
     const reopened = JSON.parse(run(root, "state.mjs", ["task", "reopen", predecessor, "--to", "plan", "--reason", "new design", "--source", "human"]));
-    assert.equal(reopened.task.phase, "plan"); assert.equal(reopened.task.evidence.at(-1).result, "fail");
-    assert.equal(reopened.task.tasks.find((item: { id: string }) => item.id === "T1").status, "todo");
+    assert.equal(reopened.result.task.phase, "plan"); assert.equal(reopened.result.task.evidence.at(-1).result, "fail");
+    assert.equal(reopened.result.task.tasks.find((item: { id: string }) => item.id === "T1").status, "todo");
 
     run(root, "state.mjs", ["task", "handoff", predecessor, "--kind", "structural_change", "--reason", "use successor", "--source", "human"]);
     run(root, "state.mjs", ["task", "create", successor, "--title", "Release successor", "--type", "bug", "--language", "en", "--area", "root"]);
     const superseded = JSON.parse(run(root, "state.mjs", ["task", "supersede", predecessor, "--successor", successor, "--reason", "separate release work", "--source", "human"]));
     assert.equal(superseded.nextAction.classification, "terminal"); assert.equal(superseded.nextAction.outcome, "superseded");
-    assert.equal(JSON.parse(run(root, "state.mjs", ["task", "show", successor])).predecessorTaskId, predecessor);
+    assert.equal(JSON.parse(run(root, "state.mjs", ["task", "show", successor])).result.predecessorTaskId, predecessor);
     const compact = JSON.parse(readFileSync(join(root, ".agents/data/state/aidlc-state.json"), "utf8"));
     assert.equal(compact.schemaVersion, 3); assert.equal(compact.tasks[predecessor], undefined); assert.equal(compact.archive[predecessor].status, "superseded");
 
@@ -208,6 +215,35 @@ test("installed runtime supports audited handoff, reopen, close, and atomic supe
     const closed = JSON.parse(run(root, "state.mjs", ["task", "close", closedId, "--reason", "no longer needed", "--source", "human"]));
     assert.equal(closed.nextAction.classification, "terminal"); assert.equal(closed.nextAction.outcome, "closed");
     const invalid = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "task", "supersede", successor, "--successor", successor, "--reason", "bad", "--source", "human"], { cwd: root, encoding: "utf8" });
-    assert.notEqual(invalid.status, 0); assert.equal(JSON.parse(run(root, "state.mjs", ["task", "show", successor])).status, "active");
+    assert.notEqual(invalid.status, 0); assert.equal(JSON.parse(run(root, "state.mjs", ["task", "show", successor])).result.status, "active");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("installed entry scripts fail with a one-line JSON envelope and typed exit codes", () => {
+  const root = mkdtempSync(join(tmpdir(), "aidlc-runtime-envelope-"));
+  try {
+    applyPlan(root, planInit(options(root)));
+    const script = (name: string) => join(root, ".agents/aidlc/scripts", name);
+    const unknown = spawnSync(process.execPath, [script("task-next.mjs"), "missing-task"], { cwd: root, encoding: "utf8" });
+    assert.equal(unknown.status, 1);
+    const envelope = JSON.parse(unknown.stderr.trim());
+    assert.equal(envelope.ok, false);
+    assert.match(envelope.error.message, /Unknown task/);
+    assert.doesNotMatch(unknown.stderr, /at file:/);
+
+    const badGate = spawnSync(process.execPath, [script("gate-check.mjs"), "missing-task"], { cwd: root, encoding: "utf8" });
+    assert.equal(badGate.status, 1);
+    assert.match(JSON.parse(badGate.stderr.trim()).error.message, /Unknown task: missing-task/);
+
+    run(root, "state.mjs", ["task", "create", "case-task", "--title", "Case"]);
+    const caseCollision = spawnSync(process.execPath, [script("state.mjs"), "task", "create", "Case-Task", "--title", "Duplicate"], { cwd: root, encoding: "utf8" });
+    assert.notEqual(caseCollision.status, 0); assert.match(caseCollision.stderr, /collides case-insensitively/);
+    const doneStatus = spawnSync(process.execPath, [script("state.mjs"), "task", "status", "case-task", "--status", "done"], { cwd: root, encoding: "utf8" });
+    assert.notEqual(doneStatus.status, 0); assert.match(doneStatus.stderr, /task transition --to done/);
+
+    writeFileSync(join(root, ".agents/data/state/aidlc-state.json"), "{broken");
+    const corrupted = spawnSync(process.execPath, [script("state.mjs"), "task", "list"], { cwd: root, encoding: "utf8" });
+    assert.equal(corrupted.status, 1);
+    assert.match(JSON.parse(corrupted.stderr.trim()).error.message, /corrupted or unreadable/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

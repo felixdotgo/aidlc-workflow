@@ -1,6 +1,6 @@
 # AI-DLC v1 Orchestrator
 
-This file is the compact kernel contract. Project customization lives under `.agents/project/`; discovery indexes live under `.agents/data/index/`; the authoritative lifecycle store uses a compact `.agents/data/state/aidlc-state.json` catalog plus digest-validated terminal records under `.agents/data/state/archive/`; task prose and workplans are review artifacts, not mutable state.
+This file is the compact kernel contract. Project customization lives under `.agents/project/` (optional — create it when needed; the installer does not scaffold it); discovery indexes live under `.agents/data/index/`; the authoritative lifecycle store uses a compact `.agents/data/state/aidlc-state.json` catalog plus digest-validated terminal records under `.agents/data/state/archive/`; task prose and workplans are review artifacts, not mutable state.
 
 ## Turn routing
 
@@ -8,7 +8,7 @@ This file is the compact kernel contract. Project customization lives under `.ag
 2. Resolve `node .agents/aidlc/scripts/state.mjs task next <task-id>` for an existing task; do not infer the next action from prose alone.
 3. Classify the request as `NEW`, `RESUME`, `SWITCH`, or `OFF-WORKFLOW`.
    - A requested feature, bug fix, or project change is `NEW` unless canonical state already contains the matching unfinished task; a read-only explanation or inspection is `OFF-WORKFLOW`.
-   - Bootstrap `NEW` with the exact user-supplied canonical ID when present: run `state.mjs task create`, then execute the clarify phase. `task next` applies only after canonical state exists.
+   - Bootstrap `NEW` with the exact user-supplied canonical ID when present: run `state.mjs task create`, then execute the clarify phase. `task next` applies only after canonical state exists. When the user supplies no ID, derive a short kebab-case slug from the title (lowercase letters, digits, hyphens; it must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`, e.g. `fix-login-retry`) and reuse that exact ID for the whole lifecycle.
    - For `SWITCH`, preserve the current task. If it has a durable handoff, ask the user to reopen G1, close it, or create a fresh G0 successor and then supersede it; never mark failed work `done` or inherit approvals into the successor.
 4. For a task, request only its current phase packet with `node .agents/aidlc/scripts/context.mjs <task-id> --phase <phase>`. Do not load every workflow file.
 5. Use `node .agents/aidlc/scripts/state.mjs` for lifecycle mutations when the active adapter policy is `scripted`. Gate approval always uses the atomic `gate approve` command when scripts are available. Native fallback must apply approval and transition as one logical transaction after the same checks.
@@ -36,7 +36,7 @@ Transitions are enforced by the state machine. A gate may not be skipped, and un
 - Trace quantified rules, enumerations, and contracts to an exact source.
 - Run the narrowest meaningful verification for every affected area.
 - Review only the task diff against its approved decisions and spec anchors.
-- Bound repair to three verify cycles per area and two review passes; then record a durable handoff and escalate with evidence.
+- Repair bounds (three verify cycles per area, two review passes) are machine-enforced from evidence: the bound hit flips `nextAction` to `blocked` and closes G2 with a `REPAIR_BOUND` error. Follow the returned handoff command and escalate with evidence.
 - Structural changes discovered during build reopen G1.
 
 Economy models use the same gates and executable checks. They receive smaller context packets; they do not receive weaker quality rules. Escalate to a stronger model or human for security, migrations, cross-service contracts, ambiguous specs, or exhausted repair bounds.
@@ -49,7 +49,7 @@ Precedence is deterministic:
 kernel → built-in topology profile → local profile → project config/rules → approved task decisions
 ```
 
-Built-in profiles are `topology/generic`, `topology/single`, `topology/workspace`, and `topology/git-submodules`. Stack, delivery, issue-tracker, runtime, and domain rules belong in `.agents/config.json`, `.agents/project/profiles/`, or `.agents/project/rules/`, not in this kernel.
+Built-in profiles are `topology/generic`, `topology/single`, `topology/workspace`, and `topology/git-submodules`. Stack, delivery, issue-tracker, runtime, and domain rules belong in `.agents/config.json`, `.agents/project/profiles/`, or `.agents/project/rules/` (create these optional directories when first needed), not in this kernel.
 
 Configured commands use executable + argument arrays. Never turn configuration into an unreviewed shell string.
 

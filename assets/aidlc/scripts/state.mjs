@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-import { acquireStateLock, approveAndAdvance, checkGate, closeTask, handoffTask, listTaskSummaries, loadMemoryRegistry, loadState, loadTask, migrateState, nextAction, option, parseArguments, promoteAgenticMemory, rebuildLessonIndex, recordLesson, recordNoLessons, renderViews, reopenTask, retireAgenticMemory, rootOption, saveState, searchLessons, supersedeTask, transitionTask, validateArguments } from "./lib/runtime.mjs";
+import { acquireStateLock, approveAndAdvance, checkGate, closeTask, failEntry, handoffTask, listTaskSummaries, loadMemoryRegistry, loadState, loadTask, migrateState, nextAction, option, parseArguments, promoteAgenticMemory, rebuildLessonIndex, recordLesson, recordNoLessons, renderViews, reopenTask, retireAgenticMemory, rootOption, saveState, searchLessons, supersedeTask, transitionTask, validateArguments } from "./lib/runtime.mjs";
 
+try {
 const raw = process.argv.slice(2);
 const valueOptions = ["--root", "--status", "--limit", "--cursor", "--query", "--title", "--type", "--language", "--risk", "--area", "--mode", "--reason", "--source", "--to", "--kind", "--successor", "--label", "--resolution", "--result", "--gate", "--detail", "--summary", "--prevention", "--example", "--promotion", "--guidance", "--phase", "--priority", "--source-task", "--source-lesson", "--approved-by"];
 const parsed = parseArguments(raw, { valueOptions, booleanOptions: ["--include-archive"] });
@@ -20,7 +21,7 @@ const schemas = {
   "task close": { minPositionals: 3, valueOptions: ["--reason", "--source"], requiredOptions: ["--reason", "--source"] },
   "task supersede": { minPositionals: 3, valueOptions: ["--successor", "--reason", "--source"], requiredOptions: ["--successor", "--reason", "--source"] },
   "task reopen": { minPositionals: 3, valueOptions: ["--to", "--reason", "--source"], requiredOptions: ["--to", "--reason", "--source"] },
-  "task status": { minPositionals: 3, valueOptions: ["--status"], requiredOptions: ["--status"] },
+  "task status": { minPositionals: 3, valueOptions: ["--status", "--mode", "--reason", "--source"], requiredOptions: ["--status"] },
   "task item": { minPositionals: 4, valueOptions: ["--status", "--label"], requiredOptions: ["--status"] },
   "decision set": { minPositionals: 4, valueOptions: ["--status", "--label", "--resolution"], requiredOptions: ["--status"] },
   "evidence add": { minPositionals: 3, valueOptions: ["--kind", "--result", "--gate", "--area", "--source", "--detail"], requiredOptions: ["--kind", "--result"] },
@@ -64,26 +65,30 @@ const persist = (tasks, rebuildLessons = false) => {
   if (rebuildLessons || archived.length) rebuildLessonIndex(root, state);
   renderViews(root, state, tasks.filter(Boolean));
 };
-const respond = (task, result = {}) => console.log(JSON.stringify({ task, ...result, nextAction: nextAction(task) }, null, 2));
+const emit = (result, task) => console.log(JSON.stringify({ ok: true, ...(result === undefined ? {} : { result }), ...(task ? { nextAction: nextAction(task, root) } : {}) }, null, 2));
+const respond = (task, result = {}) => emit({ task, ...result }, task);
 
 if (group === "state" && action === "migrate") {
-  console.log(JSON.stringify(migrateState(root, state), null, 2));
+  emit(migrateState(root, state));
 } else if (group === "task" && action === "show") {
-  if (id) console.log(JSON.stringify(loadTask(root, id, state) ?? null, null, 2));
-  else console.log(JSON.stringify(listTaskSummaries(state, summaryOptions()), null, 2));
+  if (id) { const shown = loadTask(root, id, state) ?? null; emit(shown, shown ?? undefined); }
+  else emit(listTaskSummaries(state, summaryOptions()));
 } else if (group === "task" && action === "list") {
-  console.log(JSON.stringify(listTaskSummaries(state, summaryOptions()), null, 2));
+  emit(listTaskSummaries(state, summaryOptions()));
 } else if (group === "task" && action === "find") {
   const query = option(parsed, "--query");
   if (!query) throw new Error("task find requires --query");
-  console.log(JSON.stringify(listTaskSummaries(state, summaryOptions(query)), null, 2));
+  emit(listTaskSummaries(state, summaryOptions(query)));
 } else if (group === "task" && action === "next") {
   const task = loadTask(root, id, state);
   if (!task) throw new Error(`Unknown task: ${id}`);
-  console.log(JSON.stringify(nextAction(task), null, 2));
+  emit({ id: task.id, phase: task.phase, gate: task.gate, status: task.status }, task);
 } else if (group === "task" && action === "create") {
   const title = option(parsed, "--title");
-  if (!id || !title || loadTask(root, id, state)) throw new Error("task create requires a new id and --title");
+  if (!id || !title) throw new Error("task create requires <task-id> and --title");
+  if (loadTask(root, id, state)) throw new Error(`Task already exists: ${id}; use task next ${id} to resume it`);
+  const collision = [...Object.keys(state.tasks), ...Object.keys(state.archive ?? {})].find((existing) => existing.toLowerCase() === id.toLowerCase());
+  if (collision) throw new Error(`Task id collides case-insensitively with existing task: ${collision}`);
   const recordedAt = now();
   const task = state.tasks[id] = {
     id, title, type: option(parsed, "--type") ?? "infra", phase: "clarify", gate: "G0_confirm", status: "active",
@@ -103,21 +108,26 @@ if (group === "state" && action === "migrate") {
   const task = transitionTask(state, id, "done"); persist([task], true); respond(task);
 } else if (group === "task" && action === "handoff") {
   const task = handoffTask(state, id, option(parsed, "--kind"), option(parsed, "--reason"), option(parsed, "--source"));
-  persist([task]); console.log(JSON.stringify({ task, nextAction: nextAction(task) }, null, 2));
+  persist([task]); respond(task);
 } else if (group === "task" && action === "close") {
   const task = closeTask(state, id, option(parsed, "--reason"), option(parsed, "--source"));
-  persist([task]); console.log(JSON.stringify({ task, nextAction: nextAction(task) }, null, 2));
+  persist([task]); respond(task);
 } else if (group === "task" && action === "supersede") {
   const task = supersedeTask(state, id, option(parsed, "--successor"), option(parsed, "--reason"), option(parsed, "--source")); const successor = state.tasks[task.successorTaskId];
-  persist([task, successor]); console.log(JSON.stringify({ task, successor, nextAction: nextAction(task) }, null, 2));
+  persist([task, successor]); respond(task, { successor });
 } else if (group === "task" && action === "reopen") {
   const task = reopenTask(state, id, option(parsed, "--to"), option(parsed, "--reason"), option(parsed, "--source"));
-  persist([task]); console.log(JSON.stringify({ task, nextAction: nextAction(task) }, null, 2));
+  persist([task]); respond(task);
 } else if (group === "task" && action === "status") {
   const task = state.tasks[id]; const status = option(parsed, "--status");
-  if (!task || !["active", "blocked_on_user", "paused", "done"].includes(status)) throw new Error("task status requires active task id and valid --status");
-  if (task.status === "blocked_on_user" && status === "active") throw new Error("Cannot cancel a validated human-gate wait with task status; use an audited lifecycle action");
+  if (!task || !["active", "blocked_on_user", "paused"].includes(status)) throw new Error("task status requires an active task id and --status active|blocked_on_user|paused; finishing a task uses task transition --to done or task archive");
+  if (task.status === "blocked_on_user" && status === "active") {
+    const mode = option(parsed, "--mode"); const reason = option(parsed, "--reason"); const cancelSource = option(parsed, "--source");
+    if (mode !== "audited" || !reason?.trim() || !cancelSource?.trim()) throw new Error("Cancelling a human-gate wait requires --mode audited, --reason, and --source (e.g. the user's rejection message)");
+    task.evidence.push({ kind: "diagnostic", result: "pass", source: cancelSource, detail: `Cancelled gate wait at ${task.gate}: ${reason}`, recordedAt: now() });
+  }
   if (status === "blocked_on_user") {
+    if (task.gate === "none") throw new Error("Phase wrap has no human gate; continue wrap and finish with task transition --to done or task archive");
     const errors = checkGate(root, state, id, task.gate).filter((item) => item.level === "ERROR");
     if (errors.length) throw new Error(`Gate is not ready: ${errors.map((item) => `${item.code}: ${item.message}`).join("; ")}`);
   }
@@ -151,11 +161,11 @@ if (group === "state" && action === "migrate") {
   const task = state.tasks[id]; if (!task) throw new Error("lesson none requires active task id");
   recordNoLessons(task, option(parsed, "--reason"), option(parsed, "--source")); persist([task], true); respond(task, { lessonDisposition: task.lessonDisposition });
 } else if (group === "lesson" && action === "rebuild") {
-  console.log(JSON.stringify(rebuildLessonIndex(root, state), null, 2));
+  emit(rebuildLessonIndex(root, state));
 } else if (group === "lesson" && action === "search") {
-  console.log(JSON.stringify(searchLessons(root, state, option(parsed, "--query") ?? "", (option(parsed, "--area") ?? "").split(",").map((item) => item.trim()).filter(Boolean), numberOption("--limit", 5)), null, 2));
+  emit(searchLessons(root, state, option(parsed, "--query") ?? "", (option(parsed, "--area") ?? "").split(",").map((item) => item.trim()).filter(Boolean), numberOption("--limit", 5)));
 } else if (group === "memory" && action === "list") {
-  console.log(JSON.stringify(loadMemoryRegistry(root), null, 2));
+  emit(loadMemoryRegistry(root));
 } else if (group === "memory" && action === "promote") {
   const entry = promoteAgenticMemory(root, {
     id: args[2], summary: option(parsed, "--summary"), guidance: option(parsed, "--guidance"),
@@ -163,14 +173,14 @@ if (group === "state" && action === "migrate") {
     phases: (option(parsed, "--phase") ?? "*").split(",").map((item) => item.trim()).filter(Boolean),
     priority: numberOption("--priority", 50), sourceTaskId: option(parsed, "--source-task"), sourceLessonId: option(parsed, "--source-lesson"), approvedBy: option(parsed, "--approved-by"), approvedAt: now()
   });
-  console.log(JSON.stringify(entry, null, 2));
+  emit(entry);
 } else if (group === "memory" && action === "retire") {
   const entry = retireAgenticMemory(root, args[2], option(parsed, "--reason"), option(parsed, "--approved-by"));
-  console.log(JSON.stringify(entry, null, 2));
+  emit(entry);
 } else if (group === "gate" && action === "approve") {
   const gate = option(parsed, "--gate"); const source = option(parsed, "--source");
   if (!id || !gate || !source) throw new Error("gate approve requires active task id, --gate, and explicit --source");
-  const result = approveAndAdvance(root, state, id, gate, source); persist([result.task]); console.log(JSON.stringify(result, null, 2));
+  const outcome = approveAndAdvance(root, state, id, gate, source); persist([outcome.task]); emit({ task: outcome.task, idempotent: outcome.idempotent }, outcome.task);
 } else {
   throw new Error("Usage: state.mjs state migrate | task create|show|list|find|next|status|item|transition|archive|handoff|close|supersede|reopen | decision set | evidence add | lesson record|none|search|rebuild | memory list|promote|retire | gate approve");
 }
@@ -178,3 +188,4 @@ if (group === "state" && action === "migrate") {
   process.off("exit", releaseOnce);
   releaseOnce();
 }
+} catch (error) { failEntry(error); }

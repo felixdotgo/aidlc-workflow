@@ -53,3 +53,27 @@ test("MCP and local cores share build-boundary, verification, reopen, and self-t
   reopenTask(local, localTask.id, "plan", "replan", "human", "2026-01-01T00:00:05.000Z"); core.reopenTask(remote, remoteTask.id, "plan", "replan", "human", "2026-01-01T00:00:05.000Z");
   assert.equal(localTask.tasks[0].status, "todo"); assert.deepEqual(remote.tasks[remoteTask.id], localTask);
 });
+
+test("MCP and local cores agree that a gateless wait continues wrap", async () => {
+  // @ts-ignore -- runtime conformance is the contract under test.
+  const core = await import("../../services/mcp-state/src/lifecycle-core.mjs");
+  const fixture = task(); fixture.phase = "wrap"; fixture.gate = "none"; fixture.status = "blocked_on_user";
+  assert.deepEqual(core.nextAction(structuredClone(fixture)), nextAction(fixture));
+  assert.equal(nextAction(fixture).classification, "run_phase");
+});
+
+test("MCP and local cores count repair bounds identically", async () => {
+  // @ts-ignore -- runtime conformance is the contract under test.
+  const core = await import("../../services/mcp-state/src/lifecycle-core.mjs");
+  const { repairBounds } = await import("../../src/state.js");
+  const fixture = task(); fixture.phase = "build"; fixture.gate = "G2_codereview"; fixture.tasks = [{ id: "T1", label: "Build", status: "done" }];
+  fixture.evidence.push(
+    { kind: "approval", gate: "G1_review", source: "human", result: "pass", recordedAt: "2026-01-01T00:00:01.000Z" },
+    { kind: "test", area: "root", source: "test", result: "fail", recordedAt: "2026-01-01T00:00:02.000Z" },
+    { kind: "test", area: "root", source: "test", result: "fail", recordedAt: "2026-01-01T00:00:03.000Z" },
+    { kind: "lint", area: "root", source: "lint", result: "fail", recordedAt: "2026-01-01T00:00:04.000Z" }
+  );
+  assert.deepEqual(core.repairBounds(structuredClone(fixture)), repairBounds(fixture));
+  assert.deepEqual(core.nextAction(structuredClone(fixture)), nextAction(fixture));
+  assert.equal(nextAction(fixture).classification, "blocked");
+});
