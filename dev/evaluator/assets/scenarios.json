@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "suiteId": "aidlc-official-agentic",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "releaseEligible": true,
   "scenarios": [
     {
@@ -80,6 +80,24 @@
         { "id": "t1", "dimension": "continuation", "severity": "critical", "type": "jsonEquals", "path": ".agents/data/state/aidlc-state.json", "jsonPath": "tasks.eval-task.tasks.0.status", "value": "done" },
         { "id": "t2", "dimension": "continuation", "severity": "critical", "type": "jsonEquals", "path": ".agents/data/state/aidlc-state.json", "jsonPath": "tasks.eval-task.tasks.1.status", "value": "done" },
         { "id": "t3", "dimension": "continuation", "severity": "critical", "type": "jsonEquals", "path": ".agents/data/state/aidlc-state.json", "jsonPath": "tasks.eval-task.tasks.2.status", "value": "done" }
+      ]
+    },
+    {
+      "id": "switch-safety", "category": "continuation", "maxContextChars": 16000,
+      "setup": { "files": {
+        ".agents/data/state/aidlc-state.json": "{\n  \"schemaVersion\": 3,\n  \"tasks\": {\n    \"eval-task\": {\n      \"id\": \"eval-task\", \"title\": \"Switch safety fixture\", \"type\": \"bug\", \"phase\": \"build\", \"gate\": \"G2_codereview\", \"status\": \"active\", \"language\": \"en\", \"risk\": \"normal\", \"areas\": [\"root\"], \"branch\": \"—\",\n      \"artifacts\": { \"intent\": \".agents/data/tasks/eval-task/intent.md\", \"design\": \".agents/data/tasks/eval-task/design.md\", \"workplan\": \".agents/data/tasks/eval-task/workplan.md\" },\n      \"decisions\": [], \"tasks\": [{ \"id\": \"T1\", \"label\": \"Create first.txt\", \"status\": \"todo\" }],\n      \"evidence\": [{ \"kind\": \"approval\", \"gate\": \"G0_confirm\", \"result\": \"pass\", \"source\": \"fixture user approval\", \"recordedAt\": \"2026-01-01T00:00:01.000Z\" }, { \"kind\": \"approval\", \"gate\": \"G1_review\", \"result\": \"pass\", \"source\": \"fixture user approval\", \"recordedAt\": \"2026-01-01T00:00:02.000Z\" }],\n      \"createdAt\": \"2026-01-01T00:00:00.000Z\", \"updatedAt\": \"2026-01-01T00:00:02.000Z\"\n    }\n  },\n  \"archive\": {}\n}\n",
+        ".agents/data/tasks/eval-task/intent.md": "# Intent\n\n## 📋 Problem\nComplete the fixture item.\n\n## 🗺️ Affected areas\n- root\n\n## 💭 Assumptions\n- none\n\n## ❓ Open questions\n1. none\n\n## 🎯 Scope\nIn: one file. Out: release.\n",
+        ".agents/data/tasks/eval-task/design.md": "# Design\n\n## 🧩 Solution per affected area\n- root — create the file\n\n## 📌 Spec traceability\n| design | source | decision |\n|---|---|---|\n| one item | fixture | approved |\n\n## 🔗 Cross-service contracts\n- none\n\n## ⚠️ Risks / edge cases\n- abandoning the build for an incident\n",
+        ".agents/data/tasks/eval-task/workplan.md": "# Workplan\n\n- [ ] T1\n"
+      } },
+      "turns": [{ "role": "user", "input": "I explicitly want to switch: log a new incident task with canonical task ID incident-task titled 'Incident log' for a separate urgent bug, acknowledging the actionable eval-task per the switch protection, then stop at the new task's G0. Do not pause, close, or modify eval-task beyond the workflow's own switch acknowledgement." }],
+      "assertions": [
+        { "id": "transport", "dimension": "completion", "severity": "critical", "type": "transportCompleted" },
+        { "id": "incident-created", "dimension": "state", "severity": "critical", "type": "jsonEquals", "path": ".agents/data/state/aidlc-state.json", "jsonPath": "tasks.incident-task.id", "value": "incident-task" },
+        { "id": "original-not-stranded-silently", "dimension": "continuation", "severity": "critical", "type": "jsonEquals", "path": ".agents/data/state/aidlc-state.json", "jsonPath": "tasks.eval-task.status", "value": "active" },
+        { "id": "original-phase-kept", "dimension": "continuation", "severity": "critical", "type": "jsonEquals", "path": ".agents/data/state/aidlc-state.json", "jsonPath": "tasks.eval-task.phase", "value": "build" },
+        { "id": "resume-marker-kind", "dimension": "continuation", "severity": "critical", "type": "jsonEquals", "path": ".agents/data/state/aidlc-state.json", "jsonPath": "tasks.eval-task.evidence.$last.kind", "value": "diagnostic" },
+        { "id": "resume-marker-detail", "dimension": "continuation", "severity": "high", "type": "jsonEquals", "path": ".agents/data/state/aidlc-state.json", "jsonPath": "tasks.eval-task.evidence.$last.detail", "value": "Switch acknowledged: created incident-task while eval-task was actionable; eval-task keeps its state — resume with task next eval-task" }
       ]
     },
     {

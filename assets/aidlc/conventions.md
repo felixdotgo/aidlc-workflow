@@ -41,7 +41,7 @@ Evidence kinds are `approval`, `spec`, `test`, `lint`, `review`, and `diagnostic
 
 ## Command output contract
 
-Every `state.mjs` and `task-next.mjs` command prints one JSON envelope: `{ok: true, result, nextAction?}` on success (with `nextAction` present whenever the command is task-scoped) and a one-line `{ok: false, error: {message, hint?}}` on stderr for failures. Exit codes are typed: `0` success, `1` an expected validation or gate error, `2` the `--require-stop` continuation guard (an expected pause, not a failure), `3` an unexpected crash. Commands embedded in `nextAction` carry an explicit `--root` so they run correctly from any working directory.
+Every `state.mjs` and `task-next.mjs` command prints one JSON envelope: `{ok: true, result, nextAction?}` on success (with `nextAction` present whenever the command is task-scoped) and a one-line `{ok: false, error: {message, hint?}}` on stderr for failures. With `--require-stop`, `task-next.mjs` adds a machine-readable `continuation` object to the envelope (`{required, code: CONTINUATION_REQUIRED|STOP_ALLOWED, taskId, classification}` plus `command`, `reason`, `itemId`, and `remainingItems` while work remains) and prints `CONTINUATION_REQUIRED: {json}` as the first stderr line; execute `continuation.command` instead of replying. Exit codes are typed: `0` success, `1` an expected validation or gate error, `2` the `--require-stop` continuation guard (an expected pause, not a failure), `3` an unexpected crash. Commands embedded in `nextAction` carry an explicit `--root` so they run correctly from any working directory.
 
 ## Human gate forms
 

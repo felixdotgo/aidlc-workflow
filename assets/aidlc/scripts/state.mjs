@@ -3,7 +3,7 @@ import { acquireStateLock, approveAndAdvance, checkGate, closeTask, failEntry, h
 
 try {
 const raw = process.argv.slice(2);
-const valueOptions = ["--root", "--status", "--limit", "--cursor", "--query", "--title", "--type", "--language", "--risk", "--area", "--mode", "--reason", "--source", "--to", "--kind", "--successor", "--label", "--resolution", "--result", "--gate", "--detail", "--summary", "--prevention", "--example", "--promotion", "--guidance", "--phase", "--priority", "--source-task", "--source-lesson", "--approved-by"];
+const valueOptions = ["--root", "--status", "--limit", "--cursor", "--query", "--title", "--type", "--language", "--risk", "--area", "--mode", "--reason", "--source", "--to", "--kind", "--successor", "--label", "--resolution", "--result", "--gate", "--detail", "--summary", "--prevention", "--example", "--promotion", "--guidance", "--phase", "--priority", "--source-task", "--source-lesson", "--approved-by", "--switch-from"];
 const parsed = parseArguments(raw, { valueOptions, booleanOptions: ["--include-archive"] });
 const args = parsed.positionals;
 const [group, action, rawId] = args;
@@ -14,7 +14,7 @@ const schemas = {
   "task list": { minPositionals: 2, valueOptions: ["--status", "--limit", "--cursor"], booleanOptions: ["--include-archive"] },
   "task find": { minPositionals: 2, valueOptions: ["--query", "--status", "--limit", "--cursor"], booleanOptions: ["--include-archive"], requiredOptions: ["--query"] },
   "task next": { minPositionals: 3 },
-  "task create": { minPositionals: 3, valueOptions: ["--title", "--type", "--language", "--risk", "--area"], requiredOptions: ["--title"] },
+  "task create": { minPositionals: 3, valueOptions: ["--title", "--type", "--language", "--risk", "--area", "--switch-from"], requiredOptions: ["--title"] },
   "task transition": { minPositionals: 3, valueOptions: ["--mode", "--reason", "--source", "--to"], requiredOptions: ["--mode", "--reason", "--source", "--to"], usage: "task transition requires --mode audited, --reason, --source, and --to" },
   "task archive": { minPositionals: 3 },
   "task handoff": { minPositionals: 3, valueOptions: ["--kind", "--reason", "--source"], requiredOptions: ["--kind", "--reason", "--source"] },
@@ -89,6 +89,14 @@ if (group === "state" && action === "migrate") {
   if (loadTask(root, id, state)) throw new Error(`Task already exists: ${id}; use task next ${id} to resume it`);
   const collision = [...Object.keys(state.tasks), ...Object.keys(state.archive ?? {})].find((existing) => existing.toLowerCase() === id.toLowerCase());
   if (collision) throw new Error(`Task id collides case-insensitively with existing task: ${collision}`);
+  const actionable = Object.values(state.tasks).filter((existing) => nextAction(existing, root).classification === "run_phase").map((existing) => existing.id).sort();
+  const actionableByLowercase = new Map(actionable.map((existing) => [existing.toLowerCase(), existing]));
+  const acknowledgedTokens = [...new Set((option(parsed, "--switch-from") ?? "").split(",").map((item) => item.trim()).filter(Boolean))];
+  const unknownAcknowledgement = acknowledgedTokens.filter((ack) => !actionableByLowercase.has(ack.toLowerCase()));
+  if (unknownAcknowledgement.length) throw new Error(`--switch-from must name only actionable task(s); not actionable: ${unknownAcknowledgement.join(", ")}`);
+  const acknowledged = [...new Set(acknowledgedTokens.map((ack) => actionableByLowercase.get(ack.toLowerCase())))];
+  const stranded = actionable.filter((existing) => !acknowledged.includes(existing));
+  if (stranded.length) throw new Error(`Task create is blocked while other work is actionable: ${stranded.join(", ")}. With explicit user direction to switch, rerun with --switch-from ${actionable.join(",")}; acknowledged tasks keep their state and remain the resume target`);
   const recordedAt = now();
   const task = state.tasks[id] = {
     id, title, type: option(parsed, "--type") ?? "infra", phase: "clarify", gate: "G0_confirm", status: "active",
@@ -97,7 +105,12 @@ if (group === "state" && action === "migrate") {
     artifacts: { intent: `.agents/data/tasks/${id}/intent.md`, design: `.agents/data/tasks/${id}/design.md`, workplan: `.agents/data/tasks/${id}/workplan.md` },
     decisions: [], tasks: [], evidence: [], createdAt: recordedAt, updatedAt: recordedAt
   };
-  persist([task]); respond(task);
+  const acknowledgedTasks = acknowledged.map((ack) => state.tasks[ack]);
+  for (const prior of acknowledgedTasks) {
+    prior.evidence.push({ kind: "diagnostic", result: "pass", source: `task create ${id}`, detail: `Switch acknowledged: created ${id} while ${prior.id} was actionable; ${prior.id} keeps its state — resume with task next ${prior.id}`, recordedAt });
+    prior.updatedAt = recordedAt;
+  }
+  persist([task, ...acknowledgedTasks]); respond(task);
 } else if (group === "task" && action === "transition") {
   const mode = option(parsed, "--mode"); const reason = option(parsed, "--reason"); const source = option(parsed, "--source");
   if (mode !== "audited" || !reason?.trim() || !source?.trim()) throw new Error("task transition requires --mode audited, --reason, and --source");

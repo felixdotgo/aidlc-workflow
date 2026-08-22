@@ -16,6 +16,7 @@ const instruction = (agent: string, adapter: AgentId) => [
   "Read `.agents/aidlc/orchestrator.md`. Use bounded `state.mjs task list` or `task find --query <text>`; never read or dump lifecycle files directly.",
   "",
   "For a NEW task, preserve an exact user-supplied canonical ID when present. Run `node .agents/aidlc/scripts/state.mjs task create <id> --title <title>`, then execute the clarify phase; do not call `task next` before the task exists.",
+  "If `task create` reports another actionable task, stop and surface it. Pass the returned `--switch-from <task-id>` acknowledgement only when the user explicitly chooses to switch; the prior task keeps its state and remains the resume target — never pause, close, or forget it silently.",
   "For an existing task, run `state.mjs task next <task-id>` and use the matching phase packet.",
   "",
   "Before a human gate: run `gate-check.mjs`; set `task status <task-id> --status blocked_on_user`; render the task artifact when the phase requires it; then run `gate-view.mjs <task-id>` and relay its output verbatim.",
@@ -25,7 +26,7 @@ const instruction = (agent: string, adapter: AgentId) => [
   "After every lifecycle mutation, parse the returned `nextAction`. Execute `run_phase` before responding; stop at `await_user`, `blocked`, or `terminal`; treat only `complete` as successful completion.",
   "Follow structured blocked actions. Never interpret `terminal` as a passing gate or release.",
   "",
-  "Immediately before a task final response, run `node .agents/aidlc/scripts/task-next.mjs <task-id> --require-stop`. On `CONTINUATION_REQUIRED`, execute the returned command instead of replying.",
+  "Immediately before a task final response, run `node .agents/aidlc/scripts/task-next.mjs <task-id> --require-stop` and parse its machine-readable `continuation` object. Exit code 2 (`continuation.code = CONTINUATION_REQUIRED`) means the turn is not over: execute `continuation.command` before any reply, and never convert the guard output into a final response or summary. If a premature final response already slipped out, recover in the very next turn by running `state.mjs task next <task-id>` and executing its returned command; never re-approve a gate to catch up.",
   "",
   `For other lifecycle mutations, consult \`.agents/config.json\` \`agentState.${adapter}\`; scripted is the safe default and build verification remains mandatory.`,
   "",
@@ -38,7 +39,7 @@ const claudeSkill = (phase: string, gate: string) => [
   "---", `name: aidlc-${phase}`, `description: AI-DLC ${phase} phase (${gate}) for Claude Code.`, "allowed-tools: Bash(node .agents/aidlc/scripts/*)", "---", "",
   `# AI-DLC ${phase} (${gate})`, "", `Read \`.agents/aidlc/phase-${phase}.md\` and execute it exactly.`,
   "Resolve `state.mjs task next <task-id>` and use atomic `state.mjs gate approve` when scripts are available. After every lifecycle mutation, parse `nextAction`: execute `run_phase`, stop at `await_user`, `blocked`, or `terminal`, and treat only `complete` as successful completion. Follow structured blocked actions and never treat terminal closure as a passing gate or release. Never invent or bypass human gates or build verification.",
-  "Item completion is progress, not a stop. Immediately before any task final response, run `node .agents/aidlc/scripts/task-next.mjs <task-id> --require-stop`; on `CONTINUATION_REQUIRED`, execute the returned command instead of replying.",
+  "Item completion is progress, not a stop. Immediately before any task final response, run `node .agents/aidlc/scripts/task-next.mjs <task-id> --require-stop` and parse its `continuation` object; on exit code 2 (`CONTINUATION_REQUIRED`), execute `continuation.command` before any reply and never convert the guard output into a final response. Recover from a premature final response by running `state.mjs task next <task-id>` in the very next turn and executing its command.",
   "Workflow install/upgrade operations are human-only. Never query npm for a newer workflow or run npm/npx to install, detect, preview, or upgrade it. Project-configured build, test, and lint commands remain allowed.", ""
 ].join("\n");
 

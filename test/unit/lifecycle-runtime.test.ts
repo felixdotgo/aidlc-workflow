@@ -22,10 +22,18 @@ test("installed lifecycle scripts preserve every concurrent local mutation", asy
   try {
     applyPlan(root, planInit(options(root)));
     const ids = Array.from({ length: 16 }, (_, index) => `2026-lock-${String(index).padStart(2, "0")}`);
-    await Promise.all(ids.map((id) => runAsync(root, "state.mjs", ["task", "create", id, "--title", `Concurrent ${id}`])));
+    for (const [index, id] of ids.entries()) {
+      const priors = ids.slice(0, index);
+      run(root, "state.mjs", ["task", "create", id, "--title", `Concurrent ${id}`, ...(priors.length ? ["--switch-from", priors.join(",")] : [])]);
+    }
+    await Promise.all(ids.map((id) => runAsync(root, "state.mjs", ["task", "item", id, "T1", "--status", "todo", "--label", `Concurrent item ${id}`])));
     const catalog = JSON.parse(run(root, "state.mjs", ["task", "list"]));
     assert.equal(catalog.result.total, ids.length);
-    for (const id of ids) assert.equal(JSON.parse(run(root, "state.mjs", ["task", "show", id])).result.id, id);
+    for (const id of ids) {
+      const shown = JSON.parse(run(root, "state.mjs", ["task", "show", id])).result;
+      assert.equal(shown.id, id);
+      assert.equal(shown.tasks[0]?.id, "T1");
+    }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -76,12 +84,19 @@ test("installed lifecycle CLI parses strictly and resolves one canonical project
     const nested = join(root, "packages/example/src");
     mkdirSync(nested, { recursive: true });
     const nestedId = "2026-nested-root";
-    run(root, "state.mjs", ["task", "create", nestedId, "--title", "Nested root"], nested);
+    const unacknowledged = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "task", "create", nestedId, "--title", "Nested root"], { cwd: nested, encoding: "utf8" });
+    assert.notEqual(unacknowledged.status, 0); assert.match(unacknowledged.stderr, /--switch-from 2026-strict-argv/);
+    const wrongAcknowledgement = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "task", "create", nestedId, "--title", "Nested root", "--switch-from", "missing-task"], { cwd: nested, encoding: "utf8" });
+    assert.notEqual(wrongAcknowledgement.status, 0); assert.match(wrongAcknowledgement.stderr, /must name only actionable task/);
+    run(root, "state.mjs", ["task", "create", nestedId, "--title", "Nested root", "--switch-from", id], nested);
     assert.equal(JSON.parse(run(root, "state.mjs", ["task", "show", nestedId])).result.id, nestedId);
+    const marker = JSON.parse(run(root, "state.mjs", ["task", "show", id])).result.evidence.at(-1);
+    assert.equal(marker.kind, "diagnostic");
+    assert.match(marker.detail, new RegExp(`resume with task next ${id}`));
     assert.equal(existsSync(join(nested, ".agents")), false);
 
     const multiAreaId = "2026-multi-area";
-    run(root, "state.mjs", ["task", "create", multiAreaId, "--title", "Multi area", "--area", "root,docs"]);
+    run(root, "state.mjs", ["task", "create", multiAreaId, "--title", "Multi area", "--area", "root,docs", "--switch-from", `${id},${nestedId}`]);
     const missingArea = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "evidence", "add", multiAreaId, "--kind", "test", "--result", "fail"], { cwd: root, encoding: "utf8" });
     assert.notEqual(missingArea.status, 0); assert.match(missingArea.stderr, /requires --area/);
     const unknownArea = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "evidence", "add", multiAreaId, "--kind", "test", "--area", "root-2", "--result", "fail"], { cwd: root, encoding: "utf8" });
@@ -229,7 +244,7 @@ test("installed runtime supports audited handoff, reopen, close, and atomic supe
     const compact = JSON.parse(readFileSync(join(root, ".agents/data/state/aidlc-state.json"), "utf8"));
     assert.equal(compact.schemaVersion, 4); assert.equal(compact.tasks[predecessor], undefined); assert.equal(compact.archive[predecessor].status, "superseded");
 
-    const closedId = "2026-0004-closed"; run(root, "state.mjs", ["task", "create", closedId, "--title", "Abandoned", "--area", "root"]);
+    const closedId = "2026-0004-closed"; run(root, "state.mjs", ["task", "create", closedId, "--title", "Abandoned", "--area", "root", "--switch-from", successor]);
     const closed = JSON.parse(run(root, "state.mjs", ["task", "close", closedId, "--reason", "no longer needed", "--source", "human"]));
     assert.equal(closed.nextAction.classification, "terminal"); assert.equal(closed.nextAction.outcome, "closed");
     const invalid = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "task", "supersede", successor, "--successor", successor, "--reason", "bad", "--source", "human"], { cwd: root, encoding: "utf8" });

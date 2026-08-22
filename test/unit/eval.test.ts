@@ -20,9 +20,9 @@ const report = (runner: string, adapter: string, evidenceKind: "real" | "simulat
 test("bundled agentic suite is versioned and release eligible", () => {
   const suite = loadEvalSuite();
   assert.equal(suite.schemaVersion, 2);
-  assert.equal(suite.version, "2.3.0");
+  assert.equal(suite.version, "2.4.0");
   assert.equal(suite.releaseEligible, true);
-  assert.equal(suite.scenarios.length, 13);
+  assert.equal(suite.scenarios.length, 14);
   assert.ok(suite.scenarios.some((item) => item.turns.length > 1));
   assert.ok(suite.scenarios.some((item) => item.assertions.some((assertion) => assertion.type === "jsonEquals")));
   assert.ok(suite.scenarios.some((item) => item.assertions.some((assertion) => assertion.type === "eventNotObserved")));
