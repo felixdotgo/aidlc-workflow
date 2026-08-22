@@ -157,6 +157,14 @@ test("installed local scripts drive the lifecycle without an aidlc executable or
     assert.equal(evidence.nextAction.classification, "run_phase");
     run(root, "state.mjs", ["evidence", "add", id, "--kind", "review", "--result", "pass", "--source", "adversarial review"]);
 
+    const barePause = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "task", "status", id, "--status", "paused"], { cwd: root, encoding: "utf8" });
+    assert.notEqual(barePause.status, 0); assert.match(barePause.stderr, /Pausing an active task requires --mode audited/);
+    const activePause = JSON.parse(run(root, "state.mjs", ["task", "status", id, "--status", "paused", "--mode", "audited", "--reason", "waiting on other work", "--source", "user pause request"]));
+    assert.equal(activePause.nextAction.classification, "blocked");
+    assert.match(run(root, "state.mjs", ["task", "show", id]), /Paused while active: waiting on other work/);
+    run(root, "state.mjs", ["task", "status", id, "--status", "paused"]);
+    run(root, "state.mjs", ["task", "status", id, "--status", "active"]);
+
     assert.match(run(root, "gate-check.mjs", [id, "--gate", "G2_codereview"]), /GATE_OK/);
     run(root, "state.mjs", ["evidence", "add", id, "--kind", "test", "--area", "root", "--result", "fail", "--source", "new regression"]);
     const latestFail = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/gate-check.mjs"), id, "--gate", "G2_codereview"], { cwd: root, encoding: "utf8" });
@@ -198,8 +206,11 @@ test("installed local scripts drive the lifecycle without an aidlc executable or
     assert.notEqual(wrapWait.status, 0); assert.match(wrapWait.stderr, /no human gate/);
     run(root, "state.mjs", ["lesson", "record", id, "L1", "--area", "root", "--summary", "Use installed lifecycle commands", "--prevention", "Do not hand-edit state", "--example", "state.mjs task show", "--promotion", "orchestrator", "--source", "runtime smoke"]);
     assert.equal(JSON.parse(run(root, "state.mjs", ["lesson", "search", "--query", "lifecycle", "--area", "root"])).result.length, 1);
-    run(root, "state.mjs", ["task", "archive", id]);
+    const bareArchive = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "task", "archive", id], { cwd: root, encoding: "utf8" });
+    assert.notEqual(bareArchive.status, 0); assert.match(bareArchive.stderr, /--reason is required/);
+    run(root, "state.mjs", ["task", "archive", id, "--reason", "runtime smoke complete", "--source", "human wrap"]);
     assert.equal(JSON.parse(run(root, "state.mjs", ["task", "next", id])).nextAction.classification, "complete");
+    assert.match(run(root, "state.mjs", ["task", "show", id]), /Archive to done: runtime smoke complete/);
     const compact = JSON.parse(readFileSync(join(root, ".agents/data/state/aidlc-state.json"), "utf8"));
     assert.equal(compact.schemaVersion, 4); assert.equal(compact.tasks[id], undefined); assert.equal(compact.archive[id].lessonCount, 1);
     assert.ok(existsSync(join(root, ".agents/data/state/archive", `${id}.json`)));

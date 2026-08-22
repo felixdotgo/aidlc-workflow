@@ -16,7 +16,7 @@ const schemas = {
   "task next": { minPositionals: 3 },
   "task create": { minPositionals: 3, valueOptions: ["--title", "--type", "--language", "--risk", "--area", "--switch-from"], requiredOptions: ["--title"] },
   "task transition": { minPositionals: 3, valueOptions: ["--mode", "--reason", "--source", "--to"], requiredOptions: ["--mode", "--reason", "--source", "--to"], usage: "task transition requires --mode audited, --reason, --source, and --to" },
-  "task archive": { minPositionals: 3 },
+  "task archive": { minPositionals: 3, valueOptions: ["--reason", "--source"], requiredOptions: ["--reason", "--source"] },
   "task handoff": { minPositionals: 3, valueOptions: ["--kind", "--reason", "--source"], requiredOptions: ["--kind", "--reason", "--source"] },
   "task close": { minPositionals: 3, valueOptions: ["--reason", "--source"], requiredOptions: ["--reason", "--source"] },
   "task supersede": { minPositionals: 3, valueOptions: ["--successor", "--reason", "--source"], requiredOptions: ["--successor", "--reason", "--source"] },
@@ -118,7 +118,11 @@ if (group === "state" && action === "migrate") {
   task.evidence.push({ kind: "diagnostic", result: "pass", source, detail: `Audited transition ${from} → ${target}: ${reason}`, recordedAt: now() });
   persist([task]); respond(task);
 } else if (group === "task" && action === "archive") {
-  const task = transitionTask(state, id, "done"); persist([task], true); respond(task);
+  const reason = option(parsed, "--reason"); const source = option(parsed, "--source");
+  if (!reason?.trim() || !source?.trim()) throw new Error("task archive requires --reason and --source");
+  const task = transitionTask(state, id, "done");
+  task.evidence.push({ kind: "diagnostic", result: "pass", source, detail: `Archive to done: ${reason}`, recordedAt: now() });
+  persist([task], true); respond(task);
 } else if (group === "task" && action === "handoff") {
   const task = handoffTask(state, id, option(parsed, "--kind"), option(parsed, "--reason"), option(parsed, "--source"));
   persist([task]); respond(task);
@@ -140,6 +144,12 @@ if (group === "state" && action === "migrate") {
     const mode = option(parsed, "--mode"); const reason = option(parsed, "--reason"); const cancelSource = option(parsed, "--source");
     if (mode !== "audited" || !reason?.trim() || !cancelSource?.trim()) throw new Error("Cancelling a human-gate wait requires --mode audited, --reason, and --source (e.g. the user's rejection message)");
     task.evidence.push({ kind: "diagnostic", result: "pass", source: cancelSource, detail: `Cancelled gate wait at ${task.gate}: ${reason}`, recordedAt: now() });
+  }
+  const enteringPause = status === "paused" && task.status === "active";
+  if (enteringPause) {
+    const mode = option(parsed, "--mode"); const reason = option(parsed, "--reason"); const pauseSource = option(parsed, "--source");
+    if (mode !== "audited" || !reason?.trim() || !pauseSource?.trim()) throw new Error("Pausing an active task requires --mode audited, --reason, and --source");
+    task.evidence.push({ kind: "diagnostic", result: "pass", source: pauseSource, detail: `Paused while active: ${reason}`, recordedAt: now() });
   }
   if (status === "blocked_on_user") {
     if (task.gate === "none") throw new Error("Phase wrap has no human gate; continue wrap and finish with task transition --to done or task archive");
