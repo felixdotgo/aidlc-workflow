@@ -60,12 +60,14 @@ const summaryOptions = (query) => ({
   limit: numberOption("--limit", 20),
   cursor: numberOption("--cursor", 0)
 });
+const warnings = [];
+const derivedStep = (code, hint, step) => { try { step(); } catch (error) { warnings.push({ code, message: error instanceof Error ? error.message : String(error), hint }); } };
 const persist = (tasks, rebuildLessons = false) => {
   const archived = saveState(root, state);
-  if (rebuildLessons || archived.length) rebuildLessonIndex(root, state);
-  renderViews(root, state, tasks.filter(Boolean));
+  if (rebuildLessons || archived.length) derivedStep("LESSON_INDEX_STALE", "restore the damaged archive record from git history, then run state.mjs lesson rebuild", () => rebuildLessonIndex(root, state));
+  derivedStep("RENDER_FAILED", "fix the reported path, then run render.mjs <task-id>", () => renderViews(root, state, tasks.filter(Boolean)));
 };
-const emit = (result, task) => console.log(JSON.stringify({ ok: true, ...(result === undefined ? {} : { result }), ...(task ? { nextAction: nextAction(task, root) } : {}) }, null, 2));
+const emit = (result, task) => console.log(JSON.stringify({ ok: true, ...(result === undefined ? {} : { result }), ...(warnings.length ? { warnings } : {}), ...(task ? { nextAction: nextAction(task, root) } : {}) }, null, 2));
 const respond = (task, result = {}) => emit({ task, ...result }, task);
 
 if (group === "state" && action === "migrate") {

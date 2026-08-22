@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -260,6 +260,53 @@ test("installed runtime supports audited handoff, reopen, close, and atomic supe
     assert.equal(closed.nextAction.classification, "terminal"); assert.equal(closed.nextAction.outcome, "closed");
     const invalid = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "task", "supersede", successor, "--successor", successor, "--reason", "bad", "--source", "human"], { cwd: root, encoding: "utf8" });
     assert.notEqual(invalid.status, 0); assert.equal(JSON.parse(run(root, "state.mjs", ["task", "show", successor])).result.status, "active");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("persisted mutations degrade derived-step failures to warnings instead of false errors", () => {
+  const root = mkdtempSync(join(tmpdir(), "aidlc-runtime-warnings-"));
+  try {
+    applyPlan(root, planInit(options(root)));
+    const first = "2026-0005-first";
+    run(root, "state.mjs", ["task", "create", first, "--title", "First archived", "--type", "bug", "--language", "en", "--area", "root"]);
+    const taskDir = join(root, ".agents/data/tasks", first); mkdirSync(taskDir, { recursive: true });
+    writeFileSync(join(taskDir, "intent.md"), "# Intent\n\n## 📋 Problem\nx\n## 🗺️ Affected areas\nx\n## 💭 Assumptions\nx\n## ❓ Open questions\nnone\n## 🎯 Scope\nx\n");
+    writeFileSync(join(taskDir, "design.md"), "# Design\n\n## 🧩 Solution per affected area\nx\n## 📌 Spec traceability\nx\n## 🔗 Cross-service contracts\nnone\n## ⚠️ Risks / edge cases\nnone\n");
+    run(root, "state.mjs", ["task", "status", first, "--status", "blocked_on_user"]);
+    run(root, "state.mjs", ["gate", "approve", first, "--gate", "G0_confirm", "--source", "human"]);
+    run(root, "state.mjs", ["task", "item", first, "T1", "--status", "todo", "--label", "Only item"]);
+    run(root, "state.mjs", ["task", "status", first, "--status", "blocked_on_user"]);
+    run(root, "state.mjs", ["gate", "approve", first, "--gate", "G1_review", "--source", "human"]);
+    run(root, "state.mjs", ["task", "item", first, "T1", "--status", "done"]);
+    run(root, "state.mjs", ["evidence", "add", first, "--kind", "test", "--area", "root", "--result", "pass", "--source", "smoke"]);
+    run(root, "state.mjs", ["evidence", "add", first, "--kind", "review", "--result", "pass", "--source", "review"]);
+    run(root, "state.mjs", ["task", "status", first, "--status", "blocked_on_user"]);
+    run(root, "state.mjs", ["gate", "approve", first, "--gate", "G2_codereview", "--source", "human"]);
+    run(root, "state.mjs", ["lesson", "none", first, "--reason", "none", "--source", "smoke"]);
+    run(root, "state.mjs", ["task", "archive", first, "--reason", "done", "--source", "smoke"]);
+
+    const recordPath = join(root, ".agents/data/state/archive", `${first}.json`);
+    writeFileSync(recordPath, readFileSync(recordPath, "utf8").replace("First archived", "TAMPERED"));
+    const second = "2026-0006-second";
+    const created = JSON.parse(run(root, "state.mjs", ["task", "create", second, "--title", "Second", "--area", "root"]));
+    assert.equal(created.warnings, undefined);
+    const closed = JSON.parse(run(root, "state.mjs", ["task", "close", second, "--reason", "not needed", "--source", "human"]));
+    assert.equal(closed.nextAction.classification, "terminal");
+    assert.equal(closed.warnings.length, 1); assert.equal(closed.warnings[0].code, "LESSON_INDEX_STALE");
+    assert.match(closed.warnings[0].message, /digest mismatch/); assert.match(closed.warnings[0].hint, /lesson rebuild/);
+    assert.ok(existsSync(join(root, ".agents/data/state/archive", `${second}.json`)));
+    assert.equal(JSON.parse(run(root, "state.mjs", ["task", "show", second])).result.status, "closed");
+    const loudRebuild = spawnSync(process.execPath, [join(root, ".agents/aidlc/scripts/state.mjs"), "lesson", "rebuild"], { cwd: root, encoding: "utf8" });
+    assert.equal(loudRebuild.status, 1); assert.match(loudRebuild.stderr, /digest mismatch/);
+
+    const third = "2026-0007-third";
+    run(root, "state.mjs", ["task", "create", third, "--title", "Third", "--area", "root"]);
+    const workplan = join(root, ".agents/data/tasks", third, "workplan.md");
+    writeFileSync(join(root, "outside.md"), "outside\n");
+    rmSync(workplan); symlinkSync(join(root, "outside.md"), workplan);
+    const item = JSON.parse(run(root, "state.mjs", ["task", "item", third, "T1", "--status", "todo", "--label", "After symlink"]));
+    assert.equal(item.warnings.some((entry: { code: string }) => entry.code === "RENDER_FAILED"), true);
+    assert.match(run(root, "state.mjs", ["task", "show", third]), /After symlink/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
