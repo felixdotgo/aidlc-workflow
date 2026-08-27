@@ -7,9 +7,11 @@ The optional MCP state service is a separate Docker-deployable authority for a w
 Preview a configuration first. Outside an interactive terminal, provide all four selection flags.
 
 ```sh
-npx @felixdotgo/aidlc-workflow@0.0.1 mcp setup . --dry-run \
+node /absolute/path/to/aidlc-workflow/dist/src/cli.js mcp setup . --dry-run \
   --deployment docker --storage sqlite --bind localhost --workspace engineering
 ```
+
+The package is not yet published on npm. Build a repository checkout with `npm install` and `npm run build`, then replace `/absolute/path/to/aidlc-workflow` with that checkout path.
 
 Remove `--dry-run` and confirm to create `.agents/mcp-state/` and update `.agents/config.json`. Setup does not start Docker. Copy `.env.example` to a secret-managed `.env`, review it, then start explicitly:
 

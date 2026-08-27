@@ -1,11 +1,11 @@
 # Command reference
 
-All commands operate on local files. Replace `.` with the target project path when needed. Examples use the current package version for reproducibility; choose the version intentionally in real use.
+All commands operate on local files. The package is not yet published on npm: clone this repository, run `npm install` and `npm run build` in the checkout, then replace `/absolute/path/to/aidlc-workflow` in the examples with that checkout path. Replace `.` with the target project path when needed.
 
 ## `init`
 
 ```sh
-npx @felixdotgo/aidlc-workflow@0.0.1 init [path] [--agent <name[,name]> | --all] [--yes] [--dry-run] [--force]
+node /absolute/path/to/aidlc-workflow/dist/src/cli.js init [path] [--agent <name[,name]> | --all] [--yes] [--dry-run] [--force]
 ```
 
 Plans the installation, prints a preview, and then writes the workflow only after confirmation (or `--yes`). `--dry-run` prints the same plan without writing. If exactly one installed agent is detected, it can be selected automatically. In an interactive terminal, choose multiple agents with the checkbox prompt: use arrow keys to move, Space to toggle, A to toggle all, and Enter to confirm. For scripts and non-interactive terminals, use `--agent <name[,name]>` or `--all`.
@@ -15,7 +15,7 @@ Plans the installation, prints a preview, and then writes the workflow only afte
 ## `status`
 
 ```sh
-npx @felixdotgo/aidlc-workflow@0.0.1 status [path]
+node /absolute/path/to/aidlc-workflow/dist/src/cli.js status [path]
 ```
 
 Reports the installed version and local installation status. It does not query a registry.
@@ -23,7 +23,7 @@ Reports the installed version and local installation status. It does not query a
 ## `doctor`
 
 ```sh
-npx @felixdotgo/aidlc-workflow@0.0.1 doctor [path] [--strict]
+node /absolute/path/to/aidlc-workflow/dist/src/cli.js doctor [path] [--strict]
 ```
 
 Checks the local manifest, configuration, and canonical state. `--strict` turns compatibility warnings such as a legacy manifest into errors. It does not query a registry.
@@ -31,7 +31,7 @@ Checks the local manifest, configuration, and canonical state. `--strict` turns 
 ## `profile validate`
 
 ```sh
-npx @felixdotgo/aidlc-workflow@0.0.1 profile validate [path]
+node /absolute/path/to/aidlc-workflow/dist/src/cli.js profile validate [path]
 ```
 
 Loads `.agents/config.json`, resolves its profile chain, and prints the effective profile order. Use it after changing `extends` or local profiles.
@@ -39,7 +39,7 @@ Loads `.agents/config.json`, resolves its profile chain, and prints the effectiv
 ## `uninstall`
 
 ```sh
-npx @felixdotgo/aidlc-workflow@0.0.1 uninstall [path] [--yes] [--dry-run]
+node /absolute/path/to/aidlc-workflow/dist/src/cli.js uninstall [path] [--yes] [--dry-run]
 ```
 
 Prints the removal plan before applying it. It removes eligible unchanged managed assets but preserves project configuration and state. Prefer `--dry-run` first when working in an existing project.
@@ -47,7 +47,7 @@ Prints the removal plan before applying it. It removes eligible unchanged manage
 ## `mcp setup`
 
 ```sh
-npx @felixdotgo/aidlc-workflow@0.0.1 mcp setup [path] [--dry-run] [--yes] [--storage sqlite|postgres] [--deployment docker|remote] [--bind localhost|network] [--workspace <id>] [--poll-ms <n>] [--enable]
+node /absolute/path/to/aidlc-workflow/dist/src/cli.js mcp setup [path] [--dry-run] [--yes] [--storage sqlite|postgres] [--deployment docker|remote] [--bind localhost|network] [--workspace <id>] [--poll-ms <n>] [--enable]
 ```
 
 Previews the optional MCP state-service configuration, then writes only after confirmation. Non-interactive use requires `--deployment`, `--storage`, `--bind`, and `--workspace`. It never starts Docker; `--enable` is explicit and remote mode has no local fallback. See [MCP state service](./mcp-state.md) for deployment and credential requirements.
@@ -55,7 +55,7 @@ Previews the optional MCP state-service configuration, then writes only after co
 ## `upgrade`
 
 ```sh
-npx @felixdotgo/aidlc-workflow@0.0.1 upgrade [path] [--dry-run]
+node /absolute/path/to/aidlc-workflow/dist/src/cli.js upgrade [path] [--dry-run]
 ```
 
 Upgrade is deliberately human-only. The command rejects `--yes` and `--force`; applying it requires an interactive terminal and an exact typed confirmation of the package version. Interactive confirmations use the same styled terminal prompt as `init`. Agents must not run, preview, detect, or suggest package upgrades on their own.

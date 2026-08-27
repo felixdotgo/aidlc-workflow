@@ -1,6 +1,6 @@
 # aidlc-workflow
 
-`@felixdotgo/aidlc-workflow` installs a local AI-DLC workflow into an existing project. The workflow gives coding agents a shared task lifecycle, explicit human review gates, and project-owned state and rules.
+`@felixdotgo/aidlc-workflow` installs a local AI-DLC workflow into an existing project. The workflow gives coding agents a shared task lifecycle, explicit human review gates, and project-owned state and rules. It is not yet published on npm.
 
 It is deliberately local-only: workflow assets are bundled with the package, `remoteUpdates` is `false`, and normal status checks never contact a registry.
 
@@ -10,13 +10,17 @@ It is deliberately local-only: workflow assets are bundled with the package, `re
 - An existing project directory.
 - Codex or Claude Code.
 
-## Quick start
+## Pre-release quick start
 
-Preview the installation first, then apply the same pinned version:
+Clone and build this repository first. Replace `/absolute/path/to/aidlc-workflow` below with the path to your checkout. Then preview the installation and apply it to the target project:
 
 ```sh
-npx @felixdotgo/aidlc-workflow@0.0.1 init . --agent codex --dry-run
-npx @felixdotgo/aidlc-workflow@0.0.1 init . --agent codex --yes
+git clone https://github.com/felixdotgo/aidlc-workflow.git /absolute/path/to/aidlc-workflow
+cd /absolute/path/to/aidlc-workflow
+npm install
+npm run build
+node /absolute/path/to/aidlc-workflow/dist/src/cli.js init . --agent codex --dry-run
+node /absolute/path/to/aidlc-workflow/dist/src/cli.js init . --agent codex --yes
 ```
 
 Use the adapter that matches the coding tool:
@@ -31,8 +35,8 @@ Use `--all` to install both supported adapters. Codex installs workspace-write s
 Confirm the installed project locally:
 
 ```sh
-npx @felixdotgo/aidlc-workflow@0.0.1 status .
-npx @felixdotgo/aidlc-workflow@0.0.1 doctor . --strict
+node /absolute/path/to/aidlc-workflow/dist/src/cli.js status .
+node /absolute/path/to/aidlc-workflow/dist/src/cli.js doctor . --strict
 ```
 
 ## Documentation
