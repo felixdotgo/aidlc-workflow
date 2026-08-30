@@ -1,6 +1,6 @@
-# MCP state service
+# AI-DLC Coordination service
 
-The optional MCP state service is a separate Docker-deployable authority for a workflow workspace. It is disabled by default: without an enabled `mcp` block, installed lifecycle scripts remain local and make no network calls.
+The optional AI-DLC Coordination service is a separate Docker-deployable authority for a workflow workspace. It is disabled by default: without an enabled `mcp` block, installed lifecycle scripts remain local and make no network calls.
 
 ## Safe setup
 
@@ -13,10 +13,10 @@ node /absolute/path/to/aidlc-workflow/dist/src/cli.js mcp setup . --dry-run \
 
 The package is not yet published on npm. Build a repository checkout with `npm install` and `npm run build`, then replace `/absolute/path/to/aidlc-workflow` with that checkout path.
 
-Remove `--dry-run` and confirm to create `.agents/mcp-state/` and update `.agents/config.json`. Setup does not start Docker. Copy `.env.example` to a secret-managed `.env`, review it, then start explicitly:
+Remove `--dry-run` and confirm to create `.agents/aidlc-coordination/` and update `.agents/config.json`. Setup does not start Docker. Copy `.env.example` to a secret-managed `.env`, review it, then start explicitly:
 
 ```sh
-docker compose --env-file .agents/mcp-state/.env -f .agents/mcp-state/compose.yaml up -d
+docker compose --env-file .agents/aidlc-coordination/.env -f .agents/aidlc-coordination/compose.yaml up -d
 ```
 
 Use SQLite only on the local Docker volume. Use PostgreSQL for multiple hosts. A network bind requires `MCP_STATE_AUTH_TOKEN` and TLS/reverse-proxy termination; never commit either the `.env` file or provider credentials.
@@ -24,6 +24,14 @@ Use SQLite only on the local Docker volume. Use PostgreSQL for multiple hosts. A
 ## State and synchronization contract
 
 When enabled, the remote workspace is canonical. Import/export is an explicit recovery or migration action; there is no background dual-write or local fallback during an outage. Clients pull a revision or poll `state_events_since`; the service provides neither realtime subscriptions nor push notifications.
+
+## Shared coordination board
+
+The opt-in service also provides a small workspace-scoped Kanban board that is separate from lifecycle state. Board tasks may link to an AI-DLC task ID or artifact, but board writes, comments, and claims cannot mutate lifecycle state, approve a gate, or rewrite project files.
+
+`board_get`, `board_apply`, `task_thread_get`, `task_comment_add`, `task_claim`, and `coordination_events_since` are bounded MCP tools. Tasks use `backlog`, `ready`, `in_progress`, `blocked`, `done`, or `cancelled`, plus priority, labels, assignees, and renewable one-minute-to-one-hour claims. Mutations require an expected board revision, idempotency key, actor ID, and role. A conflicting live claim is rejected.
+
+Threads are short append-only comments with author type, optional mentions, and `question`, `status`, `handoff`, or `decision` intent. They never carry credentials, hidden reasoning, general chat, or gate approvals. Clients poll compact cursor events, coalesce and debounce them, then read details only for assignment, mention, watched-task, explicit-user, or claim-expiry activity. A notice always requires a fresh revision check before action.
 
 Every `state_apply` write needs an `expectedRevision`, an `idempotencyKey`, and an absolute `clientProjectRoot`. The root is used only to format portable `nextActions` with absolute script paths and an explicit `--root`; it does not grant the server filesystem access or authority over that path. A stale revision returns the current projection for pull/rebase, and a retry with the same idempotency key returns the original committed result. Successful responses include `nextActions` for touched tasks so remote callers follow the same item loop and stop classifications as the local CLI.
 

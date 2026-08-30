@@ -50,7 +50,7 @@ Prints the removal plan before applying it. It removes eligible unchanged manage
 node /absolute/path/to/aidlc-workflow/dist/src/cli.js mcp setup [path] [--dry-run] [--yes] [--storage sqlite|postgres] [--deployment docker|remote] [--bind localhost|network] [--workspace <id>] [--poll-ms <n>] [--enable]
 ```
 
-Previews the optional MCP state-service configuration, then writes only after confirmation. Non-interactive use requires `--deployment`, `--storage`, `--bind`, and `--workspace`. It never starts Docker; `--enable` is explicit and remote mode has no local fallback. See [MCP state service](./mcp-state.md) for deployment and credential requirements.
+Previews the optional AI-DLC Coordination service configuration, then writes only after confirmation. Non-interactive use requires `--deployment`, `--storage`, `--bind`, and `--workspace`. It never starts Docker; `--enable` is explicit and remote mode has no local fallback. See [AI-DLC Coordination service](./coordination-service.md) for deployment and credential requirements.
 
 ## `upgrade`
 
