@@ -100,7 +100,7 @@ const mcpSetupOptions = async (args: string[]): Promise<McpSetupOptions> => {
     if (!selected.providers.length) selected.providers = await checkbox({ message: "Project-management connectors to configure", choices: ["jira", "trello", "github-issues"].map((value) => ({ name: value, value })) });
   }
   if (!Number.isInteger(selected.pollMs) || selected.pollMs < 1_000 || selected.pollMs > 3_600_000) throw new Error("--poll-ms must be an integer from 1000 to 3600000");
-  return { root: rootArg(args), template: join(fileURLToPath(new URL("../services/mcp-state", import.meta.url))), dryRun: flags(args).has("--dry-run"), deployment: selected.deployment!, storage: selected.storage!, bind: selected.bind!, workspace: selected.workspace!, pollMs: selected.pollMs, tokenEnv: selected.tokenEnv, providers: selected.providers, enable: flags(args).has("--enable") };
+  return { root: rootArg(args), template: join(fileURLToPath(new URL("../services/aidlc-coordination", import.meta.url))), dryRun: flags(args).has("--dry-run"), deployment: selected.deployment!, storage: selected.storage!, bind: selected.bind!, workspace: selected.workspace!, pollMs: selected.pollMs, tokenEnv: selected.tokenEnv, providers: selected.providers, enable: flags(args).has("--enable") };
 };
 
 const main = async (): Promise<void> => {

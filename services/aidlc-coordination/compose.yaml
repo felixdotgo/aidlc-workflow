@@ -1,10 +1,10 @@
 services:
-  mcp-state:
+  aidlc-coordination:
     build: .
     ports:
       - "127.0.0.1:8787:8787"
     volumes:
-      - mcp-state-data:/data
+      - aidlc-coordination-data:/data
     environment:
       MCP_STATE_DATABASE: sqlite
       MCP_STATE_SQLITE_PATH: /data/mcp-state.db
@@ -21,5 +21,5 @@ services:
       - postgres-data:/var/lib/postgresql/data
 
 volumes:
-  mcp-state-data:
+  aidlc-coordination-data:
   postgres-data:

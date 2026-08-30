@@ -18,7 +18,7 @@ export interface McpSetupOptions {
 export interface McpSetupPlan { target: string; files: string[]; config: Record<string, unknown>; }
 
 export const planMcpSetup = (options: McpSetupOptions): McpSetupPlan => {
-  const target = join(resolve(options.root), ".agents/mcp-state");
+  const target = join(resolve(options.root), ".agents/aidlc-coordination");
   const endpoint = options.deployment === "docker" ? "http://127.0.0.1:8787/mcp" : "https://replace-with-service.example/mcp";
   return {
     target,

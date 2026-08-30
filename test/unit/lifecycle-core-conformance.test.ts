@@ -14,7 +14,7 @@ test("MCP lifecycle core and local lifecycle state reject and accept the same tr
   // The production core is dependency-free ESM copied verbatim into the image.
   // TypeScript's package compilation deliberately does not include service JS.
   // @ts-ignore -- runtime conformance is the contract under test.
-  const core = await import("../../services/mcp-state/src/lifecycle-core.mjs");
+  const core = await import("../../services/aidlc-coordination/src/lifecycle-core.mjs");
   const local: WorkflowState = { schemaVersion: 3, tasks: { "core-fixture": task() }, archive: {} };
   const remote = structuredClone(local);
   assert.doesNotThrow(() => validateState(local)); assert.doesNotThrow(() => core.validateState(remote));
@@ -39,7 +39,7 @@ test("MCP lifecycle core and local lifecycle state reject and accept the same tr
 
 test("MCP and local cores share build-boundary, verification, reopen, and self-transition semantics", async () => {
   // @ts-ignore -- runtime conformance is the contract under test.
-  const core = await import("../../services/mcp-state/src/lifecycle-core.mjs");
+  const core = await import("../../services/aidlc-coordination/src/lifecycle-core.mjs");
   const localTask = task(); localTask.phase = "build"; localTask.gate = "G2_codereview"; localTask.tasks = [{ id: "T1", label: "Build", status: "done" }];
   localTask.evidence.push(
     { kind: "approval", gate: "G1_review", source: "human", result: "pass", recordedAt: "2026-01-01T00:00:01.000Z" },
@@ -58,7 +58,7 @@ test("MCP and local cores share build-boundary, verification, reopen, and self-t
 
 test("MCP and local cores agree that a gateless wait continues wrap", async () => {
   // @ts-ignore -- runtime conformance is the contract under test.
-  const core = await import("../../services/mcp-state/src/lifecycle-core.mjs");
+  const core = await import("../../services/aidlc-coordination/src/lifecycle-core.mjs");
   const fixture = task(); fixture.phase = "wrap"; fixture.gate = "none"; fixture.status = "blocked_on_user";
   assert.deepEqual(core.nextAction(structuredClone(fixture)), nextAction(fixture));
   assert.equal(nextAction(fixture).classification, "run_phase");
@@ -68,13 +68,13 @@ test("MCP and local cores agree that a gateless wait continues wrap", async () =
 test("the two committed ESM lifecycle cores are byte-identical", () => {
   // Runs from the repository root; pins the committed sources, not the build output that is synced by construction.
   const packaged = readFileSync(join(process.cwd(), "assets/aidlc/scripts/lib/store.mjs"), "utf8");
-  const service = readFileSync(join(process.cwd(), "services/mcp-state/src/lifecycle-core.mjs"), "utf8");
+  const service = readFileSync(join(process.cwd(), "services/aidlc-coordination/src/lifecycle-core.mjs"), "utf8");
   assert.equal(service, packaged);
 });
 
 test("MCP and local cores format root-qualified commands identically", async () => {
   // @ts-ignore -- runtime conformance is the contract under test.
-  const core = await import("../../services/mcp-state/src/lifecycle-core.mjs");
+  const core = await import("../../services/aidlc-coordination/src/lifecycle-core.mjs");
   const fixture = task(); fixture.phase = "build"; fixture.gate = "G2_codereview"; fixture.tasks = [{ id: "T1", label: "Build", status: "todo" }];
   fixture.evidence.push({ kind: "approval", gate: "G1_review", source: "human", result: "pass", recordedAt: "2026-01-01T00:00:01.000Z" });
   const local = nextAction(fixture, "/workspace/project");
@@ -85,7 +85,7 @@ test("MCP and local cores format root-qualified commands identically", async () 
 
 test("MCP and local cores stamp and honour legacy G2 waits identically", async () => {
   // @ts-ignore -- runtime conformance is the contract under test.
-  const core = await import("../../services/mcp-state/src/lifecycle-core.mjs");
+  const core = await import("../../services/aidlc-coordination/src/lifecycle-core.mjs");
   const fixture = task(); fixture.phase = "build"; fixture.gate = "G2_codereview"; fixture.status = "blocked_on_user"; fixture.tasks = [{ id: "T1", label: "Build", status: "done" }];
   fixture.evidence.push(
     { kind: "approval", gate: "G1_review", source: "human", result: "pass", recordedAt: "2026-01-01T00:00:01.000Z" },
@@ -111,7 +111,7 @@ test("MCP and local cores stamp and honour legacy G2 waits identically", async (
 
 test("MCP and local cores count repair bounds identically", async () => {
   // @ts-ignore -- runtime conformance is the contract under test.
-  const core = await import("../../services/mcp-state/src/lifecycle-core.mjs");
+  const core = await import("../../services/aidlc-coordination/src/lifecycle-core.mjs");
   const { repairBounds } = await import("../../src/state.js");
   const fixture = task(); fixture.phase = "build"; fixture.gate = "G2_codereview"; fixture.tasks = [{ id: "T1", label: "Build", status: "done" }];
   fixture.evidence.push(

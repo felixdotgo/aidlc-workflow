@@ -7,6 +7,25 @@ import test from "node:test";
 import { RevisionConflict, SqliteStateRepository } from "../src/repository.mjs";
 import { nextAction } from "../src/lifecycle-core.mjs";
 import { providerPreflight } from "../src/providers.mjs";
+import { CoordinationConflict, SqliteCoordinationRepository } from "../src/coordination.mjs";
+
+test("coordination board uses isolated revisioned tasks, append-only comments, claims, and compact cursors", async () => {
+  const repository = new SqliteCoordinationRepository(":memory:");
+  try {
+    const initial = await repository.get("team", { assignee: "agent-a" });
+    assert.equal(initial.revision, 0); assert.deepEqual(initial.board.tasks, []);
+    const created = await repository.apply("team", 0, "board-1", "human-a", "writer", { type: "upsert_task", task: { id: "K1", title: "Coordinate", status: "ready", assignees: ["agent-a"] } });
+    assert.equal(created.revision, 1); assert.equal(created.board.tasks[0].status, "ready");
+    const retry = await repository.apply("team", 0, "board-1", "human-a", "writer", { type: "upsert_task", task: { id: "K1", title: "ignored", status: "done" } }); assert.equal(retry.revision, created.revision); assert.equal(retry.board.tasks[0].title, "Coordinate");
+    await assert.rejects(() => repository.apply("team", 0, "stale", "human-a", "writer", { type: "upsert_task", task: { id: "K2", title: "stale", status: "ready" } }), CoordinationConflict);
+    const comment = await repository.apply("team", 1, "comment-1", "agent-a", "commenter", { type: "add_comment", taskId: "K1", authorType: "agent", intent: "status", body: "Starting bounded work." });
+    assert.equal(comment.revision, 2); assert.equal((await repository.thread("team", "K1")).comments.length, 1);
+    const claim = await repository.apply("team", 2, "claim-1", "agent-a", "writer", { type: "claim", taskId: "K1", leaseMs: 60000 }); assert.equal(claim.revision, 3);
+    await assert.rejects(() => repository.apply("team", 3, "claim-2", "agent-b", "writer", { type: "claim", taskId: "K1", leaseMs: 60000 }), /held by another actor/);
+    await assert.rejects(() => repository.apply("team", 3, "secret", "agent-a", "commenter", { type: "add_comment", taskId: "K1", authorType: "agent", intent: "status", body: "Bearer token" }), /credentials/);
+    const events = await repository.eventsSince("team", 0, { actor: "agent-a" }); assert.equal(events.length, 2); assert.ok(events.every((event) => !Object.hasOwn(event, "body")));
+  } finally { repository.close(); }
+});
 
 const task = { id: "T1", title: "First", type: "infra", phase: "clarify", gate: "G0_confirm", status: "active", language: "en", risk: "normal", areas: ["root"], branch: "—", artifacts: { intent: ".agents/data/tasks/T1/intent.md", design: ".agents/data/tasks/T1/design.md", workplan: ".agents/data/tasks/T1/workplan.md" }, decisions: [], tasks: [], evidence: [], createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" };
 
