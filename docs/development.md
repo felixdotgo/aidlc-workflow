@@ -68,6 +68,17 @@ Always use a new empty directory and inspect the printed path before removing it
 
 This direct-`dist` smoke verifies the compiled checkout, but it does not verify the published file allowlist, package bin metadata, or tarball exclusions. Before release, also run the separate [package smoke test](./testing-and-release.md#package-smoke-test), which packs and extracts a local tarball without installing or fetching the package from a registry.
 
+## Run `npx` from a local package archive
+
+To test the package before release, create its `.tgz` archive and run it with `npx`. Replace `<version>` with the version printed by `npm pack`:
+
+```sh
+npm pack
+npx --package=./felixdotgo-aidlc-workflow-<version>.tgz aidlc-workflow init . --agent codex --yes
+```
+
+`npx` runs the archive without publishing it. Use a disposable project instead of `.` if you do not want the command to write workflow files into the current directory.
+
 ## Ownership boundaries
 
 The package has three ownership layers:
