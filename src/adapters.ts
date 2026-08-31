@@ -18,6 +18,7 @@ const instruction = (agent: string, adapter: AgentId) => [
   "For a NEW task, preserve an exact user-supplied canonical ID when present. Run `node .agents/aidlc/scripts/state.mjs task create <id> --title <title>`, then execute the clarify phase; do not call `task next` before the task exists.",
   "If `task create` reports another actionable task, stop and surface it. Pass the returned `--switch-from <task-id>` acknowledgement only when the user explicitly chooses to switch; the prior task keeps its state and remains the resume target — never pause, close, or forget it silently.",
   "For an existing task, run `state.mjs task next <task-id>` and use the matching phase packet.",
+  ...(adapter === "codex" ? ["Codex execpolicy prefix rules match one command invocation. Run every `node .agents/aidlc/scripts/...` lifecycle command in a separate exec call; never join lifecycle commands with shell operators such as `&`, `&&`, `;`, or `|`."] : []),
   "",
   "Before a human gate: run `gate-check.mjs`; set `task status <task-id> --status blocked_on_user`; render the task artifact when the phase requires it; then run `gate-view.mjs <task-id>` and relay its output verbatim.",
   "",

@@ -153,6 +153,9 @@ test("official adapters carry the human-only upgrade boundary", () => {
     }
   }
   assert.deepEqual(adapters.map((adapter) => adapter.id), ["claude", "codex"]);
+  const codexAgents = adapters.find((adapter) => adapter.id === "codex")?.files().find((file) => file.path === "AGENTS.md")?.content;
+  assert.match(codexAgents ?? "", /Run every `node \.agents\/aidlc\/scripts\/\.\.\.` lifecycle command in a separate exec call/);
+  assert.match(codexAgents ?? "", /never join lifecycle commands with shell operators such as `&`, `&&`, `;`, or `\|`/);
   for (const file of adapters.find((adapter) => adapter.id === "claude")?.files() ?? []) if (file.path.includes(".claude/skills/")) assert.match(file.content, /allowed-tools: Bash\(node \.agents\/aidlc\/scripts\/\*\)/);
   for (const skill of ["skills/aidlc-plan/SKILL.md", "skills/aidlc-build/SKILL.md"]) assert.doesNotMatch(readFileSync(resolve(skill), "utf8"), /review checklist/i);
 });
