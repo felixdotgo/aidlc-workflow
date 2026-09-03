@@ -70,14 +70,14 @@ This direct-`dist` smoke verifies the compiled checkout, but it does not verify 
 
 ## Run `npx` from a local package archive
 
-To test the package before release, create its `.tgz` archive and run it with `npx`. Replace `<version>` with the version printed by `npm pack`:
+To test the package before release, create its `.tgz` archive and run the local archive with `npx`:
 
 ```sh
 npm pack
-npx --package=./felixdotgo-aidlc-workflow-<version>.tgz aidlc-workflow init . --agent codex --yes
+npx --package felixdotgo-aidlc-workflow-0.0.1.tgz -- aidlc-workflow init .
 ```
 
-`npx` runs the archive without publishing it. Use a disposable project instead of `.` if you do not want the command to write workflow files into the current directory.
+`npx` runs the archive without publishing it. Run the command from the directory containing the archive. Use a disposable project instead of `.` if you do not want the command to write workflow files into the current directory.
 
 ## Ownership boundaries
 
