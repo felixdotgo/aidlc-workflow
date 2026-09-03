@@ -15,6 +15,8 @@ const instruction = (agent: string, adapter: AgentId) => [
   "",
   "Read `.agents/aidlc/orchestrator.md`. Use bounded `state.mjs task list` or `task find --query <text>`; never read or dump lifecycle files directly.",
   "",
+  "At each phase entry and dependency boundary, apply the orchestrator's delegation contract. When parallel work is independent and valuable, use your host's native collaboration/delegation tools to fan out at most the available collaboration slots minus the lead. The lead alone owns lifecycle mutations, gates, and task review artifacts; assign non-overlapping paths, require each worker to return its summary, changed paths, verification evidence, and concerns, then integrate and verify its result before advancing.",
+  "",
   "For a NEW task, preserve an exact user-supplied canonical ID when present. Run `node .agents/aidlc/scripts/state.mjs task create <id> --title <title>`, then execute the clarify phase; do not call `task next` before the task exists.",
   "If `task create` reports another actionable task, stop and surface it. Pass the returned `--switch-from <task-id>` acknowledgement only when the user explicitly chooses to switch; the prior task keeps its state and remains the resume target — never pause, close, or forget it silently.",
   "For an existing task, run `state.mjs task next <task-id>` and use the matching phase packet.",

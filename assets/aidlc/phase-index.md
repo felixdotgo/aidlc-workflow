@@ -2,6 +2,8 @@
 
 Generate compact repository and specification manifests at `.agents/data/index/repo-map.md` and `.agents/data/index/specs-index.md` without assuming a particular stack or repository layout.
 
+Use the shared orchestration contract in `orchestrator.md` for independent discovery roots. Workers return bounded findings only; the lead reconciles them and is the sole writer of both canonical manifests.
+
 1. Resolve configured topology profiles and discovery roots.
 2. Detect areas from project markers and local profile rules. Built-in topologies are generic, single repository, workspace/monorepo, and git submodules.
 3. Index configured spec roots plus relevant README, docs, and API descriptions. Read only titles and short leading sections.

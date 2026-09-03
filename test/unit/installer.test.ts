@@ -55,8 +55,17 @@ test("installs bundled assets with manifest v2 and separate project/state owners
     assert.equal(existsSync(join(root, ".agents/data/state/BOARD.md")), false);
     assert.match(readFileSync(join(root, ".agents/aidlc/templates/model-contract.md"), "utf8"), /COSTARS/);
     assert.match(readFileSync(join(root, ".agents/aidlc/templates/model-contract.md"), "utf8"), /\.agents\/project\/rules/);
+    const orchestrator = readFileSync(join(root, ".agents/aidlc/orchestrator.md"), "utf8");
+    assert.match(orchestrator, /## Delegation contract/);
+    assert.match(orchestrator, /available collaboration slots minus the lead/);
+    assert.match(orchestrator, /single writer/);
+    assert.match(orchestrator, /summary, changed paths, evidence, and concerns/);
     assert.match(readFileSync(join(root, ".agents/aidlc/scripts/lib/context-runtime.mjs"), "utf8"), /\.agents\/project\/profiles/);
     assert.match(readFileSync(join(root, ".agents/aidlc/phase-index.md"), "utf8"), /\.agents\/data\/index\/repo-map\.md/);
+    for (const phase of ["clarify", "index", "plan", "build", "wrap"]) {
+      assert.match(readFileSync(join(root, `.agents/aidlc/phase-${phase}.md`), "utf8"), /shared orchestration contract/);
+    }
+    assert.match(readFileSync(join(root, ".agents/aidlc/phase-build.md"), "utf8"), /final\/current authoritative `nextAction`/);
     assert.deepEqual(JSON.parse(readFileSync(join(root, ".agents/data/state/aidlc-state.json"), "utf8")), { schemaVersion: 4, tasks: {}, archive: {} });
     assert.equal(JSON.parse(readFileSync(join(root, ".agents/data/lessons/index.json"), "utf8")).schemaVersion, 1);
     assert.equal(JSON.parse(readFileSync(join(root, ".agents/data/memory/agentic-memory.json"), "utf8")).schemaVersion, 1);
@@ -143,6 +152,8 @@ test("official adapters carry the human-only upgrade boundary", () => {
     assert.match(file.content, /task-next\.mjs <task-id> --require-stop/);
     assert.match(file.content, /item.*progress/i);
     if (file.path === "AGENTS.md" || file.path === "CLAUDE.md") {
+      assert.match(file.content, /delegation contract/);
+      assert.match(file.content, /native collaboration\/delegation tools/);
       const gateCheck = file.content.indexOf("gate-check.mjs");
       const blockedWait = file.content.indexOf("blocked_on_user", gateCheck);
       const gateView = file.content.indexOf("gate-view.mjs", blockedWait);

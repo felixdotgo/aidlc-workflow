@@ -2,6 +2,8 @@
 
 Goal: confirm intent before discovery cost.
 
+When independent, read-only index or ambiguity checks exist, use the shared orchestration contract in `orchestrator.md` to delegate bounded workstreams. The lead agent alone reconciles their findings, writes the intent brief, and performs every lifecycle or gate action.
+
 1. Read the compact repository/spec indexes if available; do not scan implementation code.
 2. Read `templates/model-contract.md` and apply its COSTARS clarify emphasis to the intent brief. Use CRITICS only for elevated risk, ambiguity, or model disagreement.
 3. Canonical task state already exists from turn routing (`task create` runs there, before this packet). Never create it a second time; a repeated create fails with `Task already exists`.

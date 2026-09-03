@@ -42,6 +42,13 @@ Transitions are enforced by the state machine. A gate may not be skipped, and un
 
 Economy models use the same bounded packet contract, gates, executable checks, and quality rules. Escalate to a stronger model or human for security, migrations, cross-service contracts, ambiguous specs, or exhausted repair bounds.
 
+## Delegation contract
+
+- At every phase entry and dependency boundary, the lead must triage whether independent, valuable work can proceed in parallel. Fan out only such work, and use at most the available collaboration slots minus the lead; keep dependent or low-value work local.
+- The lead is the single writer for lifecycle state, gate actions, and task review artifacts. Workers never approve or present gates, mutate lifecycle records, or make canonical artifact decisions; every human-gate and state-machine invariant remains in force.
+- Each worker assignment must name a bounded objective, owned paths or read-only scope, dependencies, expected verification, and required return output (summary, changed paths, evidence, and concerns). The lead integrates and verifies worker results before recording evidence or advancing the task.
+- Assign one writer per path. Partition work so concurrent changes cannot overlap; workers may inspect shared files, but must report a needed cross-owner change to the lead rather than edit it. The lead resolves conflicts and performs final integration.
+
 ## Customization layers
 
 Precedence is deterministic:

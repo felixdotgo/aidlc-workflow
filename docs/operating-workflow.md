@@ -17,6 +17,10 @@ request → clarify → G0 → plan → G1 → build and verify → G2 → wrap 
 
 An agent continues after each non-terminal transition and after every item or evidence mutation. Completing one work item is a progress update, not a turn boundary: the agent consumes the returned `nextAction` and continues through the remaining items, verification, and review. It stops only for a gate that is ready for human action, a durable blocker, a terminal non-success outcome, or successful completion.
 
+## Parallel workstreams
+
+At any phase, the lead agent may use the orchestration contract to delegate independent, bounded workstreams when the host has spare worker capacity. The lead keeps one slot, assigns explicit ownership and completion criteria, and integrates returned work before relying on it. It remains the only writer for task state, evidence, review artifacts, and gates. In build, a batch may contain only items with non-overlapping file/area ownership; shared surfaces, integration, task-wide verification, and adversarial review remain lead-owned. Parallel work never changes the approval or lifecycle requirements described below.
+
 ## Starting work
 
 After installation, make a normal change request to the selected coding agent. For example:

@@ -2,6 +2,8 @@
 
 Precondition: canonical state contains passing G0 approval evidence.
 
+Use the shared orchestration contract in `orchestrator.md` to fan out only independent, bounded discovery streams. Workers return summaries and exact anchors; the lead reconciles conflicts, writes design/workplan content, and is the sole lifecycle and gate writer.
+
 1. Retrieve only matched specs and impacted symbols. Parallelize bounded discovery when available; return summaries and exact spec anchors, not file dumps.
 2. Read `templates/model-contract.md` and apply its COSTARS plan emphasis. Use CRITICS only for elevated risk, ambiguity, or model disagreement.
 3. Fill the design template with the solution per affected area, exact sources for quantified rules, contracts, risks, and reuse candidates.

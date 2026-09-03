@@ -62,6 +62,9 @@ test("context packet includes canonical decisions and honors the configured budg
     assert.match(packet.content, /Next action \/ stop contract/);
     assert.match(packet.content, /workflow installation and upgrades remain human-only/);
     assert.match(packet.content, /after the user explicitly approves G2/);
+    assert.match(packet.content, /batch of independent canonical items/i);
+    assert.match(packet.content, /before marking items or recording any lifecycle evidence\/state mutation/i);
+    assert.match(packet.content, /final\/current authoritative `nextAction`/);
     assert.match(packet.content, /"status": "active"/);
     assert.ok(packet.estimatedTokens > 0);
   } finally { rmSync(root, { recursive: true, force: true }); }

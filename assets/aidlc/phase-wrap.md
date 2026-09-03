@@ -4,6 +4,8 @@ Precondition: the user approved G2 and canonical state contains passing G2 appro
 
 Wrap is success-only and has NO human gate (`gate: none`): never set `blocked_on_user` here — the CLI rejects it. `closed` and `superseded` tasks are terminal at the phase where they stopped and never enter wrap or imply release success.
 
+Use the shared orchestration contract in `orchestrator.md` for independent read-only delivery-policy, lesson, or residual-risk checks. The lead reconciles outputs and is the only agent that records lessons/delivery evidence, performs delivery actions, or transitions the task.
+
 1. Commit only when the user requested it. Follow the project's configured delivery policy; kernel does not assume submodules, branches, PR provider, or issue tracker.
 2. Review durable corrections. Record each with `node .agents/aidlc/scripts/state.mjs lesson record <task-id> <lesson-id> --summary <s> --prevention <p> --example <e> --source <source>`, including provenance; if none exist, run `node .agents/aidlc/scripts/state.mjs lesson none <task-id> --reason <reason> --source <source>`. Promote advisory project memory only with explicit user approval via `state.mjs memory promote`; retirement also requires an explicit audited approval. Prefer executable enforcement over prose. Memory and lesson-index commands are not task-scoped, so their output has no `nextAction` — continue the wrap steps in order.
 3. Record delivery evidence and residual risk. Rebuild/search lessons and manage advisory memory only through the installed lifecycle script; never hand-edit the derived index or memory registry.
