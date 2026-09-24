@@ -21,7 +21,7 @@ test("package exposes only the npx-oriented workflow binary name", () => {
 test("README provides setup while detailed documentation lives in docs", () => {
   const readme = readFileSync(resolve("README.md"), "utf8"); const development = readFileSync(resolve("DEVELOPMENT.md"), "utf8");
   const docs = resolve("docs");
-  assert.match(readme, /## Quick start/); assert.match(readme, /docs\/README\.md/); assert.doesNotMatch(readme, /## Development-only evaluator/);
+  assert.match(readme, /## (?:pre-release )?quick start/i); assert.match(readme, /docs\/README\.md/); assert.doesNotMatch(readme, /## Development-only evaluator/);
   assert.doesNotMatch(readme, /## Workflow lifecycle/); assert.doesNotMatch(readme, /## Repository layout/);
   assert.match(development, /## Contributor documentation/); assert.match(development, /docs\/development\.md/);
   for (const name of ["README.md", "operating-workflow.md", "configuration.md", "command-reference.md", "development.md", "testing-and-release.md", "architecture.md"]) assert.ok(existsSync(join(docs, name)), `missing docs/${name}`);

@@ -31,23 +31,28 @@ test("Claude driver enables verbose stream JSON mode", { skip: process.platform 
 
 test("drivers apply least-privilege permissions to initial and resumed turns", { skip: process.platform === "win32" }, () => {
   for (const driver of ["codex", "claude"] as const) {
-    const root = mkdtempSync(join(tmpdir(), `aidlc-${driver}-permissions-`)); const argsPath = join(root, "args.jsonl");
+    const root = mkdtempSync(join(tmpdir(), `aidlc-${driver}-permissions-`)); const argsPath = join(root, "args.jsonl"); const stdinPath = join(root, "stdin.json");
     try {
       const configRoot = join(root, ".agents");
       writeFileSync(join(root, "verify.mjs"), "", "utf8");
       mkdirSync(configRoot, { recursive: true });
       writeFileSync(join(configRoot, "config.json"), JSON.stringify({ commands: { test: { command: "node", args: ["verify.mjs"] }, unsafe: { command: "node", args: ["bad;command"] } } }), "utf8");
       const body = driver === "codex"
-        ? `const fs=require("node:fs"); fs.appendFileSync(process.env.FAKE_ARGS_PATH,JSON.stringify(process.argv.slice(2))+"\\n"); console.log(JSON.stringify({type:"thread.started",thread_id:"fixture-thread"})); console.log(JSON.stringify({type:"item.completed",item:{type:"agent_message",text:"OK"}}));`
+        ? `const fs=require("node:fs"); const stdin=fs.fstatSync(0); fs.writeFileSync(process.env.FAKE_STDIN_PATH,JSON.stringify({characterDevice:stdin.isCharacterDevice(),content:fs.readFileSync(0,"utf8")})); fs.appendFileSync(process.env.FAKE_ARGS_PATH,JSON.stringify(process.argv.slice(2))+"\\n"); console.log(JSON.stringify({type:"thread.started",thread_id:"fixture-thread"})); console.log(JSON.stringify({type:"item.completed",item:{type:"agent_message",text:"OK"}}));`
         : `const fs=require("node:fs"); fs.appendFileSync(process.env.FAKE_ARGS_PATH,JSON.stringify(process.argv.slice(2))+"\\n"); console.log(JSON.stringify({type:"result",result:"OK",session_id:"fixture-session"}));`;
       executable(root, driver, body);
-      const result = run(driver, root, root, { FAKE_ARGS_PATH: argsPath }, 2); assert.equal(result.status, 0, result.stderr);
+      const result = run(driver, root, root, { FAKE_ARGS_PATH: argsPath, FAKE_STDIN_PATH: stdinPath }, 2); assert.equal(result.status, 0, result.stderr);
       const calls = readFileSync(argsPath, "utf8").trim().split("\n").map((line) => JSON.parse(line) as string[]); assert.equal(calls.length, 2);
       for (const args of calls) {
         if (driver === "codex") {
           assert.ok(args.includes("--ignore-user-config")); assert.ok(args.includes("--strict-config"));
           assert.ok(args.includes('approval_policy="never"')); assert.ok(args.includes('web_search="disabled"'));
           assert.equal(args[args.indexOf("--sandbox") + 1], "workspace-write");
+          assert.equal(args[args.indexOf("--add-dir") + 1], join(root, ".agents"));
+          assert.match(args.at(-1) ?? "", /CONTINUATION_REQUIRED/);
+          assert.match(args.at(-1) ?? "", /continuation\.command/);
+          assert.match(args.at(-1) ?? "", /absolute non-execution requirement/);
+          assert.match(args.at(-1) ?? "", /Reply OK/);
           assert.ok(!args.some((arg) => arg.startsWith("permissions.aidlc_eval="))); assert.ok(!args.includes('default_permissions="aidlc_eval"'));
           assert.ok(!args.includes("--approve-for-me")); assert.ok(!args.includes("danger-full-access")); assert.ok(!args.includes("--dangerously-bypass-approvals-and-sandbox"));
         } else {
@@ -59,6 +64,7 @@ test("drivers apply least-privilege permissions to initial and resumed turns", {
         }
       }
       if (driver === "codex") {
+        const stdin = JSON.parse(readFileSync(stdinPath, "utf8")); assert.equal(stdin.characterDevice, true); assert.equal(stdin.content, "");
         const resumed = calls[1];
         assert.ok(resumed.indexOf("--skip-git-repo-check") < resumed.indexOf("resume"));
         assert.ok(resumed.indexOf("-C") < resumed.indexOf("resume"));
@@ -68,6 +74,32 @@ test("drivers apply least-privilege permissions to initial and resumed turns", {
       }
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
+});
+
+test("Codex driver resumes its captured thread for a validated continuation guard", { skip: process.platform === "win32" }, () => {
+  const root = mkdtempSync(join(tmpdir(), "aidlc-codex-continuation-")); const argsPath = join(root, "args.jsonl");
+  try {
+    const guard = JSON.stringify({ ok: true, continuation: { required: true, code: "CONTINUATION_REQUIRED", command: "node .agents/aidlc/scripts/context.mjs eval-task --phase build --item T1" } });
+    executable(root, "codex", `const fs=require("node:fs"); const args=process.argv.slice(2); fs.appendFileSync(process.env.FAKE_ARGS_PATH,JSON.stringify(args)+"\\n"); if(args.includes("resume")){console.log(JSON.stringify({type:"item.completed",item:{type:"agent_message",text:"continued"}}));}else{console.log(JSON.stringify({type:"thread.started",thread_id:"fixture-thread"})); console.log(JSON.stringify({type:"item.completed",item:{type:"command_execution",command:"node .agents/aidlc/scripts/task-next.mjs eval-task --require-stop",status:"failed",exit_code:2,aggregated_output:process.env.FAKE_GUARD}})); console.log(JSON.stringify({type:"item.completed",item:{type:"agent_message",text:"guard seen"}}));}`);
+    const result = run("codex", root, root, { FAKE_ARGS_PATH: argsPath, FAKE_GUARD: guard }); assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout); const calls = readFileSync(argsPath, "utf8").trim().split("\n").map((line) => JSON.parse(line) as string[]);
+    assert.equal(payload.transport, "completed"); assert.equal(calls.length, 2); assert.ok(payload.events.some((event: { type: string }) => event.type === "continuation-guard"));
+    assert.equal(calls[1][calls[1].indexOf("resume") + 1], "fixture-thread"); assert.match(calls[1].at(-1) ?? "", /Evaluator control turn/); assert.match(calls[1].at(-1) ?? "", /context\.mjs eval-task/);
+    assert.doesNotMatch(payload.diagnostics.join("\n"), /commandFailed/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("Codex driver rejects malformed continuation guards and bounds repeated valid guards", { skip: process.platform === "win32" }, () => {
+  const root = mkdtempSync(join(tmpdir(), "aidlc-codex-continuation-bound-")); const argsPath = join(root, "args.jsonl");
+  try {
+    const guard = JSON.stringify({ ok: true, continuation: { required: true, code: "CONTINUATION_REQUIRED", command: "node .agents/aidlc/scripts/context.mjs eval-task --phase build --item T1" } });
+    executable(root, "codex", `const fs=require("node:fs"); const args=process.argv.slice(2); fs.appendFileSync(process.env.FAKE_ARGS_PATH,JSON.stringify(args)+"\\n"); if(!args.includes("resume")) console.log(JSON.stringify({type:"thread.started",thread_id:"fixture-thread"})); console.log(JSON.stringify({type:"item.completed",item:{type:"command_execution",command:"node .agents/aidlc/scripts/task-next.mjs eval-task --require-stop",status:"failed",exit_code:2,aggregated_output:process.env.FAKE_GUARD}}));`);
+    const malformed = run("codex", root, root, { FAKE_ARGS_PATH: argsPath, FAKE_GUARD: "not-json" }); assert.equal(malformed.status, 0, malformed.stderr);
+    const malformedPayload = JSON.parse(malformed.stdout); assert.equal(malformedPayload.transport, "completed"); assert.match(malformedPayload.diagnostics.join("\n"), /commandFailed/); assert.equal(readFileSync(argsPath, "utf8").trim().split("\n").length, 1);
+    writeFileSync(argsPath, "", "utf8");
+    const bounded = run("codex", root, root, { FAKE_ARGS_PATH: argsPath, FAKE_GUARD: guard }); assert.equal(bounded.status, 0, bounded.stderr);
+    const boundedPayload = JSON.parse(bounded.stdout); assert.equal(boundedPayload.transport, "error"); assert.match(boundedPayload.diagnostics.join("\n"), /control limit exceeded/); assert.equal(readFileSync(argsPath, "utf8").trim().split("\n").length, 25);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("Codex driver fails closed when the initial turn does not return a thread ID", { skip: process.platform === "win32" }, () => {
@@ -144,4 +176,6 @@ test("development-only evaluator runners use the approved timeouts", () => {
   const config = JSON.parse(readFileSync(resolve("dev/evaluator/config.json"), "utf8"));
   for (const id of ["codex-luna", "claude-sonnet", "claude-haiku"]) assert.equal(config.runners[id].timeoutMs, 300_000);
   assert.equal(config.runners["local-simulated"].timeoutMs, 120_000);
+  assert.equal(config.runners["codex-luna"].modelsByCategory.continuation, "gpt-6-sol");
+  assert.equal(config.runners["codex-luna"].version, "codex-cli-0.156.1");
 });
